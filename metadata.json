@@ -1,0 +1,5 @@
+{
+  "name": "AI Model Designer Studio",
+  "description": "Upload a face, get a detailed AI analysis, and generate custom studio model photos with adjustable similarity, poses, and dress codes.",
+  "requestFramePermissions": []
+}
