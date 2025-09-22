@@ -399,9 +399,6 @@ const ClothingIdentifier: React.FC = () => {
                                 {isGeneratingModel ? <Spinner /> : <GenerateIcon className="w-5 h-5" />}
                                 {isGeneratingModel ? 'Generating Model...' : 'Generate Model with this Outfit'}
                             </button>
-                             {generationError && (
-                                <div className="text-red-400 text-sm mt-2">{generationError}</div>
-                            )}
                         </div>
 
                         {/* Right Column: Output */}
@@ -427,6 +424,7 @@ const ClothingIdentifier: React.FC = () => {
                                     onRegenerate={handleGenerateModelWithClothing}
                                     isStandalone={true}
                                     title="Generated Model with Outfit"
+                                    error={generationError}
                                 />
                                 </div>
                             </div>

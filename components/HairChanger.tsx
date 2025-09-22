@@ -69,12 +69,6 @@ const HairChanger: React.FC = () => {
 
     return (
         <>
-            {error && (
-                <div className="bg-red-900 border border-red-700 text-red-200 px-4 py-3 rounded-lg relative mb-6" role="alert">
-                    <strong className="font-bold">Error: </strong>
-                    <span className="block sm:inline">{error}</span>
-                </div>
-            )}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
                 {/* Left Column: Controls */}
                 <div className="flex flex-col gap-6 bg-gray-800/50 p-6 rounded-2xl border border-gray-700 shadow-2xl">
@@ -178,6 +172,7 @@ const HairChanger: React.FC = () => {
                                 onRegenerate={handleGenerate}
                                 isStandalone={true}
                                 title="Hasil Gaya Rambut Baru"
+                                error={error}
                             />
                         </div>
                     </div>

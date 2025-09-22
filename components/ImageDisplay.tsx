@@ -1,6 +1,6 @@
 import React from 'react';
 import Spinner from './Spinner';
-import { DownloadIcon, RegenerateIcon, SparklesIcon } from './icons';
+import { DownloadIcon, RegenerateIcon, SparklesIcon, XMarkIcon } from './icons';
 import ImageZoom from './ImageZoom';
 
 interface ImageDisplayProps {
@@ -11,6 +11,7 @@ interface ImageDisplayProps {
   isImprovingSharpness?: boolean;
   isStandalone?: boolean;
   title?: string;
+  error?: string | null;
 }
 
 const ActionButton: React.FC<{
@@ -38,7 +39,7 @@ const ActionButton: React.FC<{
   );
 };
 
-const ImageDisplay: React.FC<ImageDisplayProps> = ({ imageUrl, isLoading, onRegenerate, onImproveSharpness, isImprovingSharpness, isStandalone = false, title = "Generated Model" }) => {
+const ImageDisplay: React.FC<ImageDisplayProps> = ({ imageUrl, isLoading, onRegenerate, onImproveSharpness, isImprovingSharpness, isStandalone = false, title = "Generated Model", error }) => {
   return (
     <div className="w-full h-full flex flex-col">
       <h3 className="text-xl font-semibold text-cyan-400 mb-4">{title}</h3>
@@ -49,13 +50,21 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({ imageUrl, isLoading, onRege
             <p className="mt-3 text-gray-400">Generating your model... this may take a moment.</p>
           </div>
         )}
-        {!isLoading && imageUrl && (
+        {!isLoading && error && (
+            <div className="text-center text-red-400 p-4">
+                <XMarkIcon className="w-12 h-12 mx-auto text-red-500 mb-2" />
+                <p className="font-semibold text-lg">Generation Failed</p>
+                <p className="text-sm mt-2 text-gray-400">{error}</p>
+                <p className="text-xs mt-4 text-gray-500">This may be due to a missing API Key in your deployment environment or a content policy violation. Check your console for more details.</p>
+            </div>
+        )}
+        {!isLoading && !error && imageUrl && (
           <ImageZoom
             src={imageUrl}
             alt="Generated AI model"
           />
         )}
-         {!isLoading && !imageUrl && (
+         {!isLoading && !error && !imageUrl && (
             <div className="text-center text-gray-500">
                 <p>Your generated model will appear here.</p>
             </div>

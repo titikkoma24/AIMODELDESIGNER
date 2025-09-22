@@ -294,6 +294,7 @@ const PoseChanger: React.FC = () => {
 
         setIsChangingBackground(true);
         setBackgroundError(null);
+        setError(null);
 
         try {
             const base64Image = generatedImage.split(',')[1];
@@ -561,12 +562,6 @@ const PoseChanger: React.FC = () => {
                         )}
                     </div>
                 </div>
-
-                {error && (
-                    <div className="bg-red-900 border border-red-700 text-red-200 px-4 py-3 rounded-lg" role="alert">
-                        <span className="block sm:inline">{error}</span>
-                    </div>
-                )}
                 
                 <button
                     onClick={handleGenerate}
@@ -606,10 +601,11 @@ const PoseChanger: React.FC = () => {
                     <div className="flex flex-col">
                          <ImageDisplay
                             imageUrl={generatedImage}
-                            isLoading={isLoading}
+                            isLoading={isLoading || isChangingBackground}
                             onRegenerate={handleGenerate}
                             isStandalone={true}
                             title="Generated Pose"
+                            error={error || backgroundError}
                         />
                     </div>
                 </div>
@@ -675,11 +671,6 @@ const PoseChanger: React.FC = () => {
                                 </select>
                             </div>
                         </div>
-                        {backgroundError && (
-                             <div className="bg-red-900 border border-red-700 text-red-200 px-4 py-3 rounded-lg" role="alert">
-                                <span className="block sm:inline">{backgroundError}</span>
-                            </div>
-                        )}
                         <button
                             onClick={handleChangeBackground}
                             disabled={!canChangeBackground}
