@@ -1,5 +1,5 @@
 import React, { useState, useCallback } from 'react';
-import { analyzePose, analyzePoseAndClothing } from '../services/geminiService';
+import { analyzePose, analyzePoseAndClothing, getFriendlyErrorMessage } from '../services/geminiService';
 import FileUpload from './FileUpload';
 import { PhotoIcon, BrainIcon } from './icons';
 import Spinner from './Spinner';
@@ -52,7 +52,7 @@ const PoseDetector: React.FC = () => {
             }
             setAnalysis(result);
         } catch (err) {
-            setError(err instanceof Error ? err.message : "Terjadi kesalahan saat analisis.");
+            setError(getFriendlyErrorMessage(err));
         } finally {
             setIsLoading(false);
         }

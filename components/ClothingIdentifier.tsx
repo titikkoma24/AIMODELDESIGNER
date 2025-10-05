@@ -1,5 +1,5 @@
 import React, { useState, useCallback, useEffect } from 'react';
-import { identifyClothing, generateModel, detectAgeCategory, translateText } from '../services/geminiService';
+import { identifyClothing, generateModel, detectAgeCategory, translateText, getFriendlyErrorMessage } from '../services/geminiService';
 import FileUpload from './FileUpload';
 import ImageDisplay from './ImageDisplay';
 import { PhotoIcon, BrainIcon, GenerateIcon, UserCircleIcon } from './icons';
@@ -144,7 +144,7 @@ const ClothingIdentifier: React.FC = () => {
 
         // FIX: Corrected syntax from `catch (err) =>` to `catch (err)`. The fat arrow `=>` is invalid in a catch block and was causing a cascade of compiler errors.
         } catch (err) {
-            setAnalysisError(err instanceof Error ? err.message : 'An unknown error occurred during analysis.');
+            setAnalysisError(getFriendlyErrorMessage(err));
         } finally {
             setIsLoadingAnalysis(false);
         }
@@ -191,7 +191,7 @@ const ClothingIdentifier: React.FC = () => {
 
         // FIX: Corrected syntax from `catch (err) =>` to `catch (err)`. The fat arrow `=>` is invalid in a catch block.
         } catch (err) {
-            setGenerationError(err instanceof Error ? err.message : 'An unknown error occurred during model generation.');
+            setGenerationError(getFriendlyErrorMessage(err));
         } finally {
             setIsGeneratingModel(false);
         }
@@ -222,7 +222,7 @@ const ClothingIdentifier: React.FC = () => {
                 setGeneratedPrompt(translatedText);
             } catch (error) {
                 console.error('Translation failed:', error);
-                setGenerationError('Failed to translate prompt. Please try again.');
+                setGenerationError(getFriendlyErrorMessage(error));
                 setGeneratedPrompt(textToTranslate); 
             } finally {
                 setIsTranslating(false);

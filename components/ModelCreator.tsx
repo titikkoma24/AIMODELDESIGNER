@@ -1,5 +1,5 @@
 import React, { useState, useCallback, useEffect } from 'react';
-import { generateModel, improveSharpness } from '../services/geminiService';
+import { generateModel, improveSharpness, getFriendlyErrorMessage } from '../services/geminiService';
 import FileUpload from './FileUpload';
 import ControlPanel from './ControlPanel';
 import ImageDisplay from './ImageDisplay';
@@ -139,7 +139,7 @@ const ModelCreator: React.FC = () => {
             setCurrentImage(newImage);
             setHistory(prev => [newImage, ...prev].slice(0, 10));
         } catch (err) {
-            setError(err instanceof Error ? err.message : 'An unknown error occurred during model generation.');
+            setError(getFriendlyErrorMessage(err));
         } finally {
             setIsLoadingGeneration(false);
         }
@@ -160,7 +160,7 @@ const ModelCreator: React.FC = () => {
             setCurrentImage(newImage);
             setHistory(prev => [newImage, ...prev.filter(img => img !== currentImage)].slice(0, 10));
         } catch (err) {
-            setError(err instanceof Error ? err.message : 'An unknown error occurred during sharpness improvement.');
+            setError(getFriendlyErrorMessage(err));
         } finally {
             setIsImprovingSharpness(false);
         }

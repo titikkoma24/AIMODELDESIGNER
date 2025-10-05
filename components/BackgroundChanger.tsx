@@ -1,5 +1,5 @@
 import React, { useState, useCallback, useEffect } from 'react';
-import { changeBackground, improvePrompt, translateText } from '../services/geminiService';
+import { changeBackground, improvePrompt, translateText, getFriendlyErrorMessage } from '../services/geminiService';
 import { lightStyles, imageStyles } from '../constants/backgroundTemplates';
 import FileUpload from './FileUpload';
 import ImageDisplay from './ImageDisplay';
@@ -172,7 +172,7 @@ const BackgroundChanger: React.FC = () => {
                 setPrompt(translatedText);
             } catch (err) {
                 console.error('Translation failed:', err);
-                setError('Failed to translate prompt. Please try again.');
+                setError(getFriendlyErrorMessage(err));
                 setPrompt(textToTranslate);
             } finally {
                 setIsTranslating(false);
@@ -189,7 +189,7 @@ const BackgroundChanger: React.FC = () => {
             setPrompt(improved);
             setIsPromptFromAI(true);
         } catch (err) {
-            setError(err instanceof Error ? err.message : 'Failed to improve prompt.');
+            setError(getFriendlyErrorMessage(err));
         } finally {
             setIsImprovingPrompt(false);
         }
@@ -225,7 +225,7 @@ const BackgroundChanger: React.FC = () => {
             setCurrentImage(newImage);
             setHistory(prev => [newImage, ...prev].slice(0, 10));
         } catch (err) {
-            setError(err instanceof Error ? err.message : 'An unknown error occurred during background change.');
+            setError(getFriendlyErrorMessage(err));
         } finally {
             setIsLoading(false);
         }

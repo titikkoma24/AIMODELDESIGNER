@@ -55,7 +55,7 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({ imageUrl, isLoading, onRege
                 <XMarkIcon className="w-12 h-12 mx-auto text-red-500 mb-2" />
                 <p className="font-semibold text-lg">Generation Failed</p>
                 <p className="text-sm mt-2 text-gray-400">{error}</p>
-                <p className="text-xs mt-4 text-gray-500">This may be due to a missing API Key in your deployment environment or a content policy violation. Check your console for more details.</p>
+                <p className="text-xs mt-4 text-gray-500">This could be due to an API quota issue, a content policy violation, or a network problem. Check the console for more details.</p>
             </div>
         )}
         {!isLoading && !error && imageUrl && (

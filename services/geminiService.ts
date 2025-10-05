@@ -3,6 +3,55 @@
 import { GoogleGenAI, GenerateContentResponse, Type, Modality, Part } from "@google/genai";
 import { ClothingAnalysis, BodyShape, BustSize, ButtocksSize, WaistSize } from '../types';
 
+export const getFriendlyErrorMessage = (error: unknown): string => {
+    if (error instanceof Error) {
+        const message = error.message;
+
+        // Check for specific quota error
+        if (message.includes('429') && (message.includes('quota') || message.includes('RESOURCE_EXHAUSTED'))) {
+            let retryAfter = '';
+            // Extract retry delay, e.g., "Please retry in 52.652050002s." or "retryDelay":"52s"
+            const retryMatchSeconds = message.match(/Please retry in ([\d.]+)s/);
+            const retryMatchJson = message.match(/"retryDelay":"(\d+)s"/);
+
+            let seconds = 0;
+            if (retryMatchSeconds && retryMatchSeconds[1]) {
+                seconds = Math.ceil(parseFloat(retryMatchSeconds[1]));
+            } else if (retryMatchJson && retryMatchJson[1]) {
+                seconds = parseInt(retryMatchJson[1], 10);
+            }
+            
+            if (seconds > 0) {
+                const minutes = Math.ceil(seconds / 60);
+                retryAfter = ` Please wait about ${minutes} minute${minutes > 1 ? 's' : ''} and try again.`;
+            }
+            return `API Request Limit Reached. You have exceeded the free tier quota.${retryAfter} To continue, please check your plan and billing details on the Google AI platform.`;
+        }
+
+        // Check for other common errors like API key issues
+        if (message.toLowerCase().includes('api key not valid')) {
+             return 'API Key Not Valid. Please ensure your API key is correctly configured in your environment variables.';
+        }
+        
+        // Try to parse for a more generic Gemini API error message
+        try {
+            const parsed = JSON.parse(message);
+            if (parsed.error && parsed.error.message) {
+                // Shorten the message if it's too long
+                const mainMessage = parsed.error.message.split('\n')[0];
+                return `An API error occurred: ${mainMessage}`;
+            }
+        } catch (e) {
+            // Not a JSON string, fall through
+        }
+
+        // Return the original message as a fallback
+        return error.message;
+    }
+    return 'An unknown error occurred.';
+};
+
+
 // As per guidelines, initialize with apiKey from environment variables.
 const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
@@ -205,7 +254,7 @@ export const generateModel = async (
     parts.push({ text: finalPrompt });
 
     const response = await ai.models.generateContent({
-        model: 'gemini-2.5-flash-image',
+        model: 'gemini-2.5-flash',
         contents: { parts },
         config: {
             responseModalities: [Modality.IMAGE, Modality.TEXT],
@@ -347,7 +396,7 @@ export const changePose = async (
     parts.push({ text: prompt });
 
     const response = await ai.models.generateContent({
-        model: 'gemini-2.5-flash-image',
+        model: 'gemini-2.5-flash',
         contents: { parts },
         config: {
             responseModalities: [Modality.IMAGE, Modality.TEXT],

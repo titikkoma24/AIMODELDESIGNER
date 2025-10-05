@@ -1,5 +1,5 @@
 import React, { useState, useCallback, useRef, useEffect } from 'react';
-import { editWithNanoBanana, generateImageFromText, improvePrompt, translateText } from '../services/geminiService';
+import { editWithNanoBanana, generateImageFromText, improvePrompt, translateText, getFriendlyErrorMessage } from '../services/geminiService';
 import { shotStyles, lightStyles, aspectRatios, imageStylesForGenerator } from '../constants/backgroundTemplates';
 import FileUpload from './FileUpload';
 import ImageDisplay from './ImageDisplay';
@@ -119,7 +119,7 @@ const NanoBananaEditor: React.FC = () => {
                 setPrompt(translatedText);
             } catch (error) {
                 console.error('Translation failed:', error);
-                setError('Failed to translate prompt. Please try again.');
+                setError(getFriendlyErrorMessage(error));
                 setPrompt(textToTranslate);
             } finally {
                 setIsTranslating(false);
@@ -135,7 +135,7 @@ const NanoBananaEditor: React.FC = () => {
             const improved = await improvePrompt(prompt);
             setPrompt(improved);
         } catch (err) {
-            setError(err instanceof Error ? err.message : 'Failed to improve prompt.');
+            setError(getFriendlyErrorMessage(err));
         } finally {
             setIsImprovingPrompt(false);
         }
@@ -206,7 +206,7 @@ const NanoBananaEditor: React.FC = () => {
             setCurrentImage(newImage);
             setHistory(prev => [newImage, ...prev].slice(0, 10));
         } catch (err) {
-            setError(err instanceof Error ? err.message : 'An unknown error occurred during image generation.');
+            setError(getFriendlyErrorMessage(err));
         } finally {
             setIsLoading(false);
             setMaskBase64(null);

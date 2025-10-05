@@ -1,5 +1,5 @@
 import React, { useState, useCallback, useEffect } from 'react';
-import { changePose, changeBackground, translateText, analyzePose, improvePrompt } from '../services/geminiService';
+import { changePose, changeBackground, translateText, analyzePose, improvePrompt, getFriendlyErrorMessage } from '../services/geminiService';
 import { shotStyles, lightStyles, aspectRatios } from '../constants/backgroundTemplates';
 import FileUpload from './FileUpload';
 import ImageDisplay from './ImageDisplay';
@@ -134,7 +134,7 @@ const PoseChanger: React.FC = () => {
                 setPosePrompt(translatedText);
             } catch (err) {
                 console.error('Translation failed:', err);
-                setError('Failed to translate pose prompt. Please try again.');
+                setError(getFriendlyErrorMessage(err));
                 setPosePrompt(textToTranslate);
             } finally {
                 setIsTranslating(false);
@@ -167,7 +167,7 @@ const PoseChanger: React.FC = () => {
                 setBackgroundPrompt(translatedText);
             } catch (error) {
                 console.error('Translation failed:', error);
-                setBackgroundError('Failed to translate prompt. Please try again.');
+                setBackgroundError(getFriendlyErrorMessage(error));
                 setBackgroundPrompt(textToTranslate);
             } finally {
                 setIsTranslatingBackground(false);
@@ -183,7 +183,7 @@ const PoseChanger: React.FC = () => {
             const improved = await improvePrompt(backgroundPrompt);
             setBackgroundPrompt(improved);
         } catch (err) {
-            setBackgroundError(err instanceof Error ? err.message : 'Failed to improve prompt.');
+            setBackgroundError(getFriendlyErrorMessage(err));
         } finally {
             setIsImprovingPrompt(false);
         }
@@ -225,7 +225,7 @@ const PoseChanger: React.FC = () => {
             setObjects([]);
             setIsPoseFromAnalysis(true);
         } catch (err) {
-            setAnalysisError(err instanceof Error ? err.message : "An unknown error occurred during pose analysis.");
+            setAnalysisError(getFriendlyErrorMessage(err));
         } finally {
             setIsAnalyzingPose(false);
         }
@@ -298,7 +298,7 @@ const PoseChanger: React.FC = () => {
             setHistory(prev => [newImage, ...prev].slice(0, 10));
 
         } catch (err) {
-            setError(err instanceof Error ? err.message : 'An unknown error occurred during pose generation.');
+            setError(getFriendlyErrorMessage(err));
         } finally {
             setIsLoading(false);
         }
@@ -332,7 +332,7 @@ const PoseChanger: React.FC = () => {
             setCurrentImage(newImage);
             setHistory(prev => [newImage, ...prev].slice(0, 10));
         } catch (err) {
-            setBackgroundError(err instanceof Error ? err.message : 'An unknown error occurred during background change.');
+            setBackgroundError(getFriendlyErrorMessage(err));
         } finally {
             setIsChangingBackground(false);
         }

@@ -1,5 +1,5 @@
 import React, { useState, useCallback, useEffect } from 'react';
-import { editWithNanoBanana, improvePrompt } from '../services/geminiService';
+import { editWithNanoBanana, improvePrompt, getFriendlyErrorMessage } from '../services/geminiService';
 import { lightStyles } from '../constants/backgroundTemplates';
 import FileUpload from './FileUpload';
 import ImageDisplay from './ImageDisplay';
@@ -67,17 +67,39 @@ const AestheticProductShot: React.FC = () => {
     const [shotStyle, setShotStyle] = useState<string>(shotStyles[0]);
     const [lightStyle, setLightStyle] = useState<string>(lightStyles[0].name);
     const [imageStyle, setImageStyle] = useState<string>(imageStyles[0].name);
-    const [isLoading, setIsLoading] = useState(false);
-    const [isImproving, setIsImproving] = useState(false);
-    const [error, setError] = useState<string | null>(null);
-    const [resultImage, setResultImage] = useState<string | null>(null);
-    const [history, setHistory] = useState<string[]>([]);
+    const [imageStyleDescription, setImageStyleDescription] = useState<string>('');
     const [lightStyleDescription, setLightStyleDescription] = useState<string>('');
+    const [currentImage, setCurrentImage] = useState<string | null>(null);
+    const [history, setHistory] = useState<string[]>([]);
+    const [isLoading, setIsLoading] = useState<boolean>(false);
+    const [error, setError] = useState<string | null>(null);
+    const [isImprovingPrompt, setIsImprovingPrompt] = useState<boolean>(false);
 
     useEffect(() => {
-        const selected = lightStyles.find(style => style.name === lightStyle);
+        const themesForCategory = themes[category];
+        setSelectedTheme(themesForCategory[0].prompt);
+        setSelectedThemeName(themesForCategory[0].name);
+    }, [category]);
+
+    useEffect(() => {
+        const themePrompt = selectedTheme || '';
+        const imageStyleInfo = imageStyles.find(s => s.name === imageStyle);
+        const imageStylePrompt = imageStyleInfo && imageStyleInfo.promptValue ? `, in a ${imageStyleInfo.promptValue}` : '';
+        
+        const finalPrompt = `A product shot of the item in the uploaded image, ${themePrompt}${imageStylePrompt}`;
+        setPrompt(finalPrompt);
+
+    }, [selectedTheme, imageStyle]);
+
+    useEffect(() => {
+        const selected = imageStyles.find(s => s.name === imageStyle);
+        setImageStyleDescription(selected ? selected.description : '');
+    }, [imageStyle]);
+    
+    useEffect(() => {
+        const selected = lightStyles.find(s => s.name === lightStyle);
         setLightStyleDescription(selected ? selected.description : '');
-    }, [lightStyle]);
+      }, [lightStyle]);
 
     const handleImageUpload = (file: File) => {
         const reader = new FileReader();
@@ -85,106 +107,61 @@ const AestheticProductShot: React.FC = () => {
             setSourceImage({ file, preview: reader.result as string });
         };
         reader.readAsDataURL(file);
-        setResultImage(null);
+        setCurrentImage(null);
         setHistory([]);
         setError(null);
     };
 
-    const handleThemeSelect = (theme: {name: string, prompt: string}) => {
-        setSelectedTheme(theme.prompt);
-        setSelectedThemeName(theme.name);
-    }
-    
     const handleImprovePrompt = useCallback(async () => {
         if (!prompt.trim()) return;
-        setIsImproving(true);
+        setIsImprovingPrompt(true);
         setError(null);
         try {
             const improved = await improvePrompt(prompt);
             setPrompt(improved);
         } catch (err) {
-            setError(err instanceof Error ? err.message : 'Failed to improve prompt.');
+            setError(getFriendlyErrorMessage(err));
         } finally {
-            setIsImproving(false);
+            setIsImprovingPrompt(false);
         }
     }, [prompt]);
 
     const handleGenerate = useCallback(async () => {
         if (!sourceImage) {
-            setError('Please upload an image first.');
+            setError('Please upload a product image first.');
+            return;
+        }
+        if (!prompt.trim()) {
+            setError('Please describe the scene for the product shot.');
             return;
         }
 
-        let finalPrompt = "Take the main object from the uploaded photo and place it into a new scene based on this description: ";
-
-        if (selectedTheme) {
-            finalPrompt += `The main object is ${selectedTheme}`;
-        }
-        if (prompt.trim()) {
-            finalPrompt += ` Additionally, ${prompt.trim()}.`;
-        }
-
-        const selectedImageStyle = imageStyles.find(s => s.name === imageStyle);
-        if (selectedImageStyle && selectedImageStyle.promptValue) {
-            finalPrompt += ` The final image should have a ${selectedImageStyle.promptValue}.`;
-        }
-        
-        finalPrompt += " Ensure the product itself remains unchanged but is perfectly integrated with the new background and lighting. The result should be a high-quality commercial photograph with sharp details and realistic textures.";
-
         setIsLoading(true);
         setError(null);
-        setResultImage(null);
-        
+        setCurrentImage(null);
+
         try {
             const base64Image = sourceImage.preview.split(',')[1];
+            
             const result = await editWithNanoBanana(
                 [base64Image],
-                finalPrompt,
-                shotStyle === 'Original' ? 'Product Shot' : shotStyle,
+                prompt,
+                shotStyle,
                 lightStyle,
-                '1:1',
-                false,
+                '1:1', // Aspect ratio
+                false, // Don't preserve face for products
                 null,
                 false
             );
             const newImage = `data:image/jpeg;base64,${result}`;
-            setResultImage(newImage);
+            setCurrentImage(newImage);
             setHistory(prev => [newImage, ...prev].slice(0, 10));
         } catch (err) {
-            setError(err instanceof Error ? err.message : 'An unknown error occurred during image generation.');
+            setError(getFriendlyErrorMessage(err));
         } finally {
             setIsLoading(false);
         }
-    }, [sourceImage, prompt, selectedTheme, shotStyle, lightStyle, imageStyle]);
-
-    const CategoryButton: React.FC<{ name: Category }> = ({ name }) => (
-        <button
-          onClick={() => {
-              setCategory(name);
-              handleThemeSelect(themes[name][0]);
-          }}
-          className={`w-full py-2 text-sm font-medium rounded-md transition-colors ${
-              category === name ? 'bg-cyan-600 text-white' : 'bg-gray-700 hover:bg-gray-600'
-          }`}
-        >
-          {name}
-        </button>
-    );
-
-    const ThemeButton: React.FC<{ theme: { name: string; prompt: string } }> = ({ theme }) => (
-        <button
-          onClick={() => handleThemeSelect(theme)}
-          className={`w-full text-left p-2 text-xs md:text-sm font-medium rounded-md transition-colors ${
-              selectedThemeName === theme.name
-                  ? 'bg-cyan-600 text-white'
-                  : 'bg-gray-700 hover:bg-gray-600'
-          }`}
-        >
-          {theme.name}
-        </button>
-    );
-
-    const canGenerate = sourceImage && !isLoading;
+    }, [sourceImage, prompt, shotStyle, lightStyle]);
 
     return (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
@@ -192,107 +169,118 @@ const AestheticProductShot: React.FC = () => {
             <div className="flex flex-col gap-6 bg-gray-800/50 p-6 rounded-2xl border border-gray-700 shadow-2xl">
                 <FileUpload
                     onImageUpload={handleImageUpload}
-                    title="1. Unggah Foto Produk/Makanan/Minuman"
-                    description="Unggah foto objek yang ingin Anda buat lebih estetis."
+                    title="1. Unggah Foto Produk"
+                    description="Unggah foto produk yang ingin Anda buat lebih estetik."
                 />
-
+                
                 {sourceImage && (
-                    <>
+                    <div className="space-y-6">
                         <div className="p-4 bg-gray-900/50 rounded-lg space-y-4">
-                            <h3 className="text-lg font-semibold text-gray-200">2. Pilih Kategori & Tema Display</h3>
-                            <div className="grid grid-cols-3 gap-2">
-                                <CategoryButton name="Produk" />
-                                <CategoryButton name="Makanan" />
-                                <CategoryButton name="Minuman" />
-                            </div>
-                            <div className="grid grid-cols-3 gap-2 pt-2 border-t border-gray-700">
-                                {themes[category].map(theme => (
-                                    <ThemeButton key={theme.name} theme={theme} />
-                                ))}
-                            </div>
+                            <h3 className="text-lg font-semibold text-gray-200">2. Pilih Kategori & Tema</h3>
+                             <div>
+                                <label htmlFor="category-select" className="block text-sm font-medium text-gray-300 mb-2">Kategori</label>
+                                <select id="category-select" value={category} onChange={(e) => setCategory(e.target.value as Category)} className="w-full px-3 py-2 text-gray-200 bg-gray-700 border border-gray-600 rounded-md">
+                                    {Object.keys(themes).map(cat => <option key={cat} value={cat}>{cat}</option>)}
+                                </select>
+                             </div>
+                             <div>
+                                <label htmlFor="theme-select" className="block text-sm font-medium text-gray-300 mb-2">Tema</label>
+                                <select 
+                                    id="theme-select" 
+                                    value={selectedThemeName} 
+                                    onChange={(e) => {
+                                        const theme = themes[category].find(t => t.name === e.target.value);
+                                        if (theme) {
+                                            setSelectedTheme(theme.prompt);
+                                            setSelectedThemeName(theme.name);
+                                        }
+                                    }} 
+                                    className="w-full px-3 py-2 text-gray-200 bg-gray-700 border border-gray-600 rounded-md"
+                                >
+                                    {themes[category].map(theme => <option key={theme.name} value={theme.name}>{theme.name}</option>)}
+                                </select>
+                             </div>
                         </div>
 
                         <div className="p-4 bg-gray-900/50 rounded-lg space-y-4">
-                            <h3 className="text-lg font-semibold text-gray-200">3. Tambahkan Detail (Opsional)</h3>
-                            <textarea
-                                value={prompt}
-                                onChange={(e) => setPrompt(e.target.value)}
-                                rows={3}
-                                className="w-full px-3 py-2 text-gray-200 bg-gray-700 border border-gray-600 rounded-md focus:ring-cyan-500 focus:border-cyan-500 resize-none"
-                                placeholder="cth: tambahkan efek asap, dengan beberapa potong lemon di sampingnya..."
-                                disabled={isLoading || isImproving}
-                            />
-                            <button
-                                onClick={handleImprovePrompt}
-                                disabled={!prompt.trim() || isImproving || isLoading}
-                                className="w-full flex items-center justify-center gap-2 px-4 py-2 text-sm font-semibold text-gray-200 bg-gray-700 rounded-lg shadow-md hover:bg-gray-600 disabled:bg-gray-500 disabled:cursor-not-allowed transition-all"
-                            >
-                                {isImproving ? <Spinner /> : <SparklesIcon className="w-5 h-5" />}
-                                {isImproving ? 'Improving...' : 'AI Prompt Improvement'}
-                            </button>
-                        </div>
-                        
-                        <div className="p-4 bg-gray-900/50 rounded-lg space-y-4">
-                            <h3 className="text-lg font-semibold text-gray-200">4. Atur Gaya (Opsional)</h3>
+                            <h3 className="text-lg font-semibold text-gray-200">3. Kontrol Gaya</h3>
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                 <div>
-                                    <label htmlFor="shot-style" className="block text-sm font-medium text-gray-300 mb-2">Shot Style</label>
-                                    <select id="shot-style" value={shotStyle} onChange={(e) => setShotStyle(e.target.value)} className="w-full px-3 py-2 text-gray-200 bg-gray-700 border border-gray-600 rounded-md focus:ring-cyan-500 focus:border-cyan-500">
+                                    <label htmlFor="shot-style-aps" className="block text-sm font-medium text-gray-300 mb-2">Shot Style</label>
+                                    <select id="shot-style-aps" value={shotStyle} onChange={(e) => setShotStyle(e.target.value)} className="w-full px-3 py-2 text-gray-200 bg-gray-700 border border-gray-600 rounded-md">
                                         {shotStyles.map(style => <option key={style} value={style}>{style}</option>)}
                                     </select>
                                 </div>
                                 <div>
-                                    <label htmlFor="image-style-product" className="block text-sm font-medium text-gray-300 mb-2">Style Gambar</label>
-                                    <select id="image-style-product" value={imageStyle} onChange={(e) => setImageStyle(e.target.value)} className="w-full px-3 py-2 text-gray-200 bg-gray-700 border border-gray-600 rounded-md focus:ring-cyan-500 focus:border-cyan-500">
-                                        {imageStyles.map(style => <option key={style.name} value={style.name}>{style.name}</option>)}
+                                    <label htmlFor="light-style-aps" className="block text-sm font-medium text-gray-300 mb-2">Light Style</label>
+                                    <select id="light-style-aps" value={lightStyle} onChange={(e) => setLightStyle(e.target.value)} className="w-full px-3 py-2 text-gray-200 bg-gray-700 border border-gray-600 rounded-md">
+                                        {lightStyles.map(style => <option key={style.name} value={style.name}>{style.name}</option>)}
                                     </select>
                                 </div>
                             </div>
+                            {lightStyleDescription && <p className="text-xs text-gray-400 mt-2">{lightStyleDescription}</p>}
                             <div>
-                                <label htmlFor="light-style" className="block text-sm font-medium text-gray-300 mb-2">Light Style</label>
-                                <select id="light-style" value={lightStyle} onChange={(e) => setLightStyle(e.target.value)} className="w-full px-3 py-2 text-gray-200 bg-gray-700 border border-gray-600 rounded-md focus:ring-cyan-500 focus:border-cyan-500">
-                                    {lightStyles.map(style => <option key={style.name} value={style.name}>{style.name}</option>)}
+                                <label htmlFor="image-style-aps" className="block text-sm font-medium text-gray-300 mb-2">Style Gambar</label>
+                                <select id="image-style-aps" value={imageStyle} onChange={(e) => setImageStyle(e.target.value)} className="w-full px-3 py-2 text-gray-200 bg-gray-700 border border-gray-600 rounded-md">
+                                    {imageStyles.map(style => <option key={style.name} value={style.name}>{style.name}</option>)}
                                 </select>
-                                {lightStyleDescription && <p className="text-xs text-gray-400 mt-2">{lightStyleDescription}</p>}
+                                {imageStyleDescription && <p className="text-xs text-gray-400 mt-2">{imageStyleDescription}</p>}
                             </div>
                         </div>
 
-                    </>
+                        <div className="p-4 bg-gray-900/50 rounded-lg space-y-2">
+                             <h3 className="text-lg font-semibold text-gray-200">4. Prompt Akhir</h3>
+                             <textarea
+                                readOnly
+                                value={prompt}
+                                rows={4}
+                                className="w-full px-3 py-2 text-sm text-gray-400 bg-gray-900/50 border border-gray-600 rounded-md resize-none"
+                            />
+                            <button
+                                onClick={handleImprovePrompt}
+                                disabled={!prompt.trim() || isImprovingPrompt || isLoading}
+                                className="w-full flex items-center justify-center gap-2 px-4 py-2 text-sm font-semibold text-gray-200 bg-gray-700 rounded-lg shadow-md hover:bg-gray-600 disabled:bg-gray-500 disabled:cursor-not-allowed"
+                            >
+                                {isImprovingPrompt ? <Spinner /> : <SparklesIcon className="w-5 h-5" />}
+                                {isImprovingPrompt ? 'Improving...' : 'AI Improvement'}
+                            </button>
+                        </div>
+                    </div>
                 )}
-
+                
                 <button
                     onClick={handleGenerate}
-                    disabled={!canGenerate}
+                    disabled={!sourceImage || isLoading}
                     className="w-full flex items-center justify-center gap-2 px-4 py-3 font-bold text-gray-900 bg-cyan-400 rounded-lg shadow-lg hover:bg-cyan-500 disabled:bg-gray-600 disabled:cursor-not-allowed transition-transform transform hover:scale-105 mt-auto"
                 >
                     {isLoading ? <Spinner /> : <GenerateIcon className="w-5 h-5" />}
-                    {isLoading ? 'Generating...' : 'Buat Gambar Estetik'}
+                    {isLoading ? 'Generating...' : 'Buat Foto Estetik'}
                 </button>
             </div>
-            
+
             {/* Right Column: Output */}
             <div className="flex flex-col gap-6 bg-gray-800/50 p-6 rounded-2xl border border-gray-700 shadow-2xl min-h-[500px]">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 flex-grow">
+                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6 flex-grow">
                     <div className="flex flex-col">
                         <h3 className="text-xl font-semibold text-cyan-400 mb-4">Foto Asli</h3>
                         {sourceImage ? (
                             <div className="bg-gray-900/50 rounded-lg p-2 flex-grow flex items-center justify-center">
-                                <img src={sourceImage.preview} alt="Uploaded preview" className="rounded-md max-w-full max-h-full object-contain shadow-lg" />
+                                <img src={sourceImage.preview} alt="Source product" className="rounded-md max-w-full max-h-full object-contain shadow-lg" />
                             </div>
                         ) : (
                             <div className="flex flex-col items-center justify-center h-full text-center text-gray-500 bg-gray-900/50 rounded-lg p-8">
                                 <PhotoIcon className="w-16 h-16 mb-4" />
-                                <p>Foto yang Anda unggah akan muncul di sini.</p>
+                                <p>Foto produk Anda akan muncul di sini.</p>
                             </div>
                         )}
                     </div>
                     <div className="flex flex-col">
                         <ImageDisplay
-                            imageUrl={resultImage}
+                            imageUrl={currentImage}
                             isLoading={isLoading}
                             onRegenerate={handleGenerate}
                             isStandalone={true}
-                            title="Hasil Gambar"
+                            title="Hasil Foto"
                             error={error}
                         />
                     </div>
@@ -305,14 +293,12 @@ const AestheticProductShot: React.FC = () => {
                                 <div 
                                     key={index}
                                     className="flex-shrink-0 cursor-pointer"
-                                    onClick={() => setResultImage(histImg)}
-                                    role="button"
-                                    aria-label={`Lihat riwayat item ${index + 1}`}
+                                    onClick={() => setCurrentImage(histImg)}
                                 >
                                     <img 
                                         src={histImg} 
-                                        alt={`Riwayat ${index + 1}`}
-                                        className={`w-24 h-24 object-cover rounded-md border-2 transition-all ${resultImage === histImg ? 'border-cyan-400 scale-105' : 'border-transparent hover:border-gray-500'}`}
+                                        alt={`History ${index + 1}`}
+                                        className={`w-24 h-24 object-cover rounded-md border-2 transition-all ${currentImage === histImg ? 'border-cyan-400 scale-105' : 'border-transparent hover:border-gray-500'}`}
                                     />
                                 </div>
                             ))}

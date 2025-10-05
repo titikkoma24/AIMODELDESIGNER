@@ -1,5 +1,5 @@
 import React, { useState, useCallback } from 'react';
-import { generateVideoPrompts, VideoPromptResult } from '../services/geminiService';
+import { generateVideoPrompts, VideoPromptResult, getFriendlyErrorMessage } from '../services/geminiService';
 import { SparklesIcon, ClipboardIcon, CheckIcon } from './icons';
 import Spinner from './Spinner';
 
@@ -34,7 +34,7 @@ const VideoGenerator: React.FC = () => {
             setImprovedPrompts(result);
             setActiveTab('meta'); // Reset to the first tab
         } catch (err) {
-            setError(err instanceof Error ? err.message : 'An unknown error occurred while improving the prompt.');
+            setError(getFriendlyErrorMessage(err));
         } finally {
             setIsLoading(false);
         }

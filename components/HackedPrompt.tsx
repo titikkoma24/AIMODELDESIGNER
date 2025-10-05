@@ -1,5 +1,5 @@
 import React, { useState, useCallback } from 'react';
-import { analyzeImageForPrompt, refinePromptWithModifications, PromptModifications, analyzeHairStyle } from '../services/geminiService';
+import { analyzeImageForPrompt, refinePromptWithModifications, PromptModifications, analyzeHairStyle, getFriendlyErrorMessage } from '../services/geminiService';
 import FileUpload from './FileUpload';
 import { PhotoIcon, BrainIcon, ClipboardIcon, CheckIcon, SparklesIcon } from './icons';
 import Spinner from './Spinner';
@@ -78,7 +78,7 @@ const HackedPrompt: React.FC = () => {
             const result = await analyzeImageForPrompt(imageBase64);
             setGeneratedPrompt(result);
         } catch (err) {
-            setError(err instanceof Error ? err.message : "An unknown error occurred during analysis.");
+            setError(getFriendlyErrorMessage(err));
         } finally {
             setIsLoading(false);
         }
@@ -94,7 +94,7 @@ const HackedPrompt: React.FC = () => {
             const result = await analyzeHairStyle(imageBase64);
             setHairDescription(result);
         } catch (err) {
-            setError(err instanceof Error ? err.message : "Gagal menganalisis rambut.");
+            setError(getFriendlyErrorMessage(err));
         } finally {
             setIsAnalyzingHair(false);
         }
@@ -136,7 +136,7 @@ const HackedPrompt: React.FC = () => {
             const result = await refinePromptWithModifications(generatedPrompt, modifications);
             setUpdatedPrompt(result);
         } catch (err) {
-            setError(err instanceof Error ? err.message : "An unknown error occurred while updating the prompt.");
+            setError(getFriendlyErrorMessage(err));
         } finally {
             setIsUpdating(false);
         }

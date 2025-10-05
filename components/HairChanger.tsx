@@ -1,5 +1,5 @@
 import React, { useState, useCallback, useEffect } from 'react';
-import { changeHairStyle, analyzeHairStyle } from '../services/geminiService';
+import { changeHairStyle, analyzeHairStyle, getFriendlyErrorMessage } from '../services/geminiService';
 import FileUpload from './FileUpload';
 import ImageDisplay from './ImageDisplay';
 import { PhotoIcon, GenerateIcon, BrainIcon } from './icons';
@@ -62,7 +62,7 @@ const HairChanger: React.FC = () => {
             setManualHair(analysisResult);
             setHairOption('manual'); 
         } catch (err) {
-            setError(err instanceof Error ? err.message : 'Gagal menganalisis gaya rambut.');
+            setError(getFriendlyErrorMessage(err));
         } finally {
             setIsAnalyzingHair(false);
         }
@@ -110,7 +110,7 @@ const HairChanger: React.FC = () => {
             setCurrentImage(newImage);
             setHistory(prev => [newImage, ...prev].slice(0, 10));
         } catch (err) {
-            setError(err instanceof Error ? err.message : 'Terjadi kesalahan saat membuat model.');
+            setError(getFriendlyErrorMessage(err));
         } finally {
             setIsLoading(false);
         }
