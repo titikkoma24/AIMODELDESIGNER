@@ -5,6 +5,7 @@ import ImageDisplay from './ImageDisplay';
 import { PhotoIcon, BrainIcon, GenerateIcon, UserCircleIcon } from './icons';
 import Spinner from './Spinner';
 import { ClothingAnalysis } from '../types';
+import { poseTemplates } from '../constants/hairTemplates';
 
 const ClothingIdentifier: React.FC = () => {
     const [fullDress, setFullDress] = useState<{ file: File; preview: string } | null>(null);
@@ -19,12 +20,14 @@ const ClothingIdentifier: React.FC = () => {
     // --- New State for Model Generation ---
     const [faceForModel, setFaceForModel] = useState<{ file: File; preview: string } | null>(null);
     const [generatedPrompt, setGeneratedPrompt] = useState<string>('');
-    const [generatedModelImage, setGeneratedModelImage] = useState<string | null>(null);
+    const [currentModelImage, setCurrentModelImage] = useState<string | null>(null);
+    const [modelHistory, setModelHistory] = useState<string[]>([]);
     const [isGeneratingModel, setIsGeneratingModel] = useState<boolean>(false);
     const [generationError, setGenerationError] = useState<string | null>(null);
     const [modelGender, setModelGender] = useState<'female' | 'male'>('female');
     const [faceSimilarity, setFaceSimilarity] = useState<number>(95);
     const [useEnhancedPrompt, setUseEnhancedPrompt] = useState<boolean>(true);
+    const [selectedPose, setSelectedPose] = useState<string>(poseTemplates.female[0]);
 
 
     const [isTranslating, setIsTranslating] = useState<boolean>(false);
@@ -32,24 +35,41 @@ const ClothingIdentifier: React.FC = () => {
 
     useEffect(() => {
         if (analysis) {
-            const createCreativePrompt = (analysisResult: ClothingAnalysis): string => {
-                let description = "The model's attire consists of ";
+            const createSwapPrompt = (analysisResult: ClothingAnalysis): string => {
+                const parts: string[] = [];
                 if (analysisResult.fullOutfit) {
-                    description += `${analysisResult.fullOutfit}. `;
+                    parts.push(analysisResult.fullOutfit);
                 } else {
-                    const parts = [];
                     if (analysisResult.top) parts.push(analysisResult.top);
                     if (analysisResult.bottoms) parts.push(analysisResult.bottoms);
                     if (analysisResult.footwear) parts.push(analysisResult.footwear);
-                    description += `${parts.join(', ')}. `;
                 }
-                description += "This ensemble suggests a chic and modern style. The model should have a confident, high-fashion pose that showcases the outfit's details. The setting should be a clean, minimalist studio to emphasize the clothing.";
-                return description;
+                if (analysisResult.accessories) {
+                    parts.push(analysisResult.accessories);
+                }
+
+                const clothingDescription = parts.filter(p => p && p.trim() !== '').join(', ');
+                
+                const finalClothingPrompt = clothingDescription 
+                    ? `A model wearing: ${clothingDescription}.`
+                    : "A model wearing a simple outfit.";
+                
+                const posePrompt = selectedPose !== 'Pose Berdiri Alami (Default)' 
+                    ? `A model in a '${selectedPose}' pose. ` 
+                    : '';
+
+                const specialInstruction = "pastikan tidak merubah detail wajah ataupun rambut sedikitpun, pertahankan 100% kemiripannya dari referensi photo yang diunggah/dilampirkan. buat sangat realistis dengan detail tajam.kontras tinggi. seolah-olah diambil menggunakan kamera DSLR lensa terbaik.";
+                
+                return `${posePrompt}${finalClothingPrompt} ${specialInstruction}`;
             };
-            setGeneratedPrompt(createCreativePrompt(analysis));
-            setGeneratedModelImage(null); // Reset image when new analysis is done
+            setGeneratedPrompt(createSwapPrompt(analysis));
+            setCurrentModelImage(null); // Reset image when new analysis is done
         }
-    }, [analysis]);
+    }, [analysis, selectedPose]);
+
+    useEffect(() => {
+        setSelectedPose(poseTemplates[modelGender][0]);
+    }, [modelGender]);
 
 
     const handleFileUpload = (file: File, setter: React.Dispatch<React.SetStateAction<{ file: File; preview: string } | null>>) => {
@@ -79,7 +99,8 @@ const ClothingIdentifier: React.FC = () => {
     
     const handleFaceUpload = (file: File) => {
         handleFileUpload(file, setFaceForModel);
-        setGeneratedModelImage(null);
+        setCurrentModelImage(null);
+        setModelHistory([]);
         setGenerationError(null);
     };
 
@@ -96,7 +117,7 @@ const ClothingIdentifier: React.FC = () => {
         setAnalysisError(null);
         setAnalysis(null);
         setFaceForModel(null);
-        setGeneratedModelImage(null);
+        setCurrentModelImage(null);
 
         try {
             const getBase64 = (file: File): Promise<string> => {
@@ -137,7 +158,7 @@ const ClothingIdentifier: React.FC = () => {
 
         setIsGeneratingModel(true);
         setGenerationError(null);
-        setGeneratedModelImage(null);
+        setCurrentModelImage(null);
 
         try {
             const base64FaceData = faceForModel.preview.split(',')[1];
@@ -164,7 +185,9 @@ const ClothingIdentifier: React.FC = () => {
                 faceSimilarity,
                 useEnhancedPrompt
             );
-            setGeneratedModelImage(`data:image/jpeg;base64,${result}`);
+            const newImage = `data:image/jpeg;base64,${result}`;
+            setCurrentModelImage(newImage);
+            setModelHistory(prev => [newImage, ...prev].slice(0, 10));
 
         // FIX: Corrected syntax from `catch (err) =>` to `catch (err)`. The fat arrow `=>` is invalid in a catch block.
         } catch (err) {
@@ -306,6 +329,7 @@ const ClothingIdentifier: React.FC = () => {
                                     {analysis.top && <div><h4 className="font-semibold text-cyan-400 mb-1">Top</h4><p>{analysis.top}</p></div>}
                                     {analysis.bottoms && <div><h4 className="font-semibold text-cyan-400 mb-1">Bottoms</h4><p>{analysis.bottoms}</p></div>}
                                     {analysis.footwear && <div><h4 className="font-semibold text-cyan-400 mb-1">Footwear</h4><p>{analysis.footwear}</p></div>}
+                                    {analysis.accessories && <div><h4 className="font-semibold text-cyan-400 mb-1">Accessories</h4><p>{analysis.accessories}</p></div>}
                                 </div>
                             )}
                         </div>
@@ -328,11 +352,28 @@ const ClothingIdentifier: React.FC = () => {
                              {faceForModel && (
                                 <div className="p-4 bg-gray-900/50 rounded-lg space-y-4">
                                     <h3 className="text-lg font-semibold text-gray-200">Model Details</h3>
-                                    <div>
-                                        <label className="block text-sm font-medium text-gray-300 mb-2">Gender</label>
-                                        <div className="grid grid-cols-2 gap-2">
-                                            <button onClick={() => setModelGender('female')} className={`w-full py-2 text-sm font-medium rounded-md transition-colors ${modelGender === 'female' ? 'bg-cyan-600 text-white' : 'bg-gray-700 hover:bg-gray-600'}`}>Female</button>
-                                            <button onClick={() => setModelGender('male')} className={`w-full py-2 text-sm font-medium rounded-md transition-colors ${modelGender === 'male' ? 'bg-cyan-600 text-white' : 'bg-gray-700 hover:bg-gray-600'}`}>Male</button>
+                                    <div className="space-y-3">
+                                        <div>
+                                            <label className="block text-sm font-medium text-gray-300 mb-2">Gender</label>
+                                            <div className="grid grid-cols-2 gap-2">
+                                                <button onClick={() => setModelGender('female')} className={`w-full py-2 text-sm font-medium rounded-md transition-colors ${modelGender === 'female' ? 'bg-cyan-600 text-white' : 'bg-gray-700 hover:bg-gray-600'}`}>Female</button>
+                                                <button onClick={() => setModelGender('male')} className={`w-full py-2 text-sm font-medium rounded-md transition-colors ${modelGender === 'male' ? 'bg-cyan-600 text-white' : 'bg-gray-700 hover:bg-gray-600'}`}>Male</button>
+                                            </div>
+                                        </div>
+                                         <div>
+                                            <label htmlFor="model-pose" className="block text-sm font-medium text-gray-300 mb-2">
+                                                Pose Template
+                                            </label>
+                                            <select
+                                                id="model-pose"
+                                                value={selectedPose}
+                                                onChange={(e) => setSelectedPose(e.target.value)}
+                                                className="w-full px-3 py-2 text-gray-200 bg-gray-700 border border-gray-600 rounded-md focus:ring-cyan-500 focus:border-cyan-500"
+                                            >
+                                                {poseTemplates[modelGender].map((pose, index) => (
+                                                    <option key={index} value={pose}>{pose}</option>
+                                                ))}
+                                            </select>
                                         </div>
                                     </div>
                                     <div>
@@ -403,7 +444,7 @@ const ClothingIdentifier: React.FC = () => {
 
                         {/* Right Column: Output */}
                          <div className="flex flex-col gap-6 bg-gray-800/50 p-6 rounded-2xl border border-gray-700 shadow-2xl min-h-[500px]">
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 flex-grow">
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                                 <div className="flex flex-col">
                                 <h3 className="text-xl font-semibold text-cyan-400 mb-4">Uploaded Face</h3>
                                 {faceForModel ? (
@@ -419,7 +460,7 @@ const ClothingIdentifier: React.FC = () => {
                                 </div>
                                 <div className="flex flex-col">
                                 <ImageDisplay 
-                                    imageUrl={generatedModelImage} 
+                                    imageUrl={currentModelImage} 
                                     isLoading={isGeneratingModel}
                                     onRegenerate={handleGenerateModelWithClothing}
                                     isStandalone={true}
@@ -428,6 +469,28 @@ const ClothingIdentifier: React.FC = () => {
                                 />
                                 </div>
                             </div>
+                             {modelHistory.length > 0 && (
+                                <div className="mt-auto pt-4 border-t border-gray-700">
+                                    <h4 className="text-lg font-semibold text-cyan-400 mb-3">Generation History</h4>
+                                    <div className="flex gap-3 overflow-x-auto pb-2 -mb-2">
+                                        {modelHistory.map((histImg, index) => (
+                                            <div 
+                                                key={index}
+                                                className="flex-shrink-0 cursor-pointer"
+                                                onClick={() => setCurrentModelImage(histImg)}
+                                                role="button"
+                                                aria-label={`View history item ${index + 1}`}
+                                            >
+                                                <img 
+                                                    src={histImg} 
+                                                    alt={`History ${index + 1}`}
+                                                    className={`w-24 h-24 object-cover rounded-md border-2 transition-all ${currentModelImage === histImg ? 'border-cyan-400 scale-105' : 'border-transparent hover:border-gray-500'}`}
+                                                />
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
                         </div>
                     </div>
                 </div>

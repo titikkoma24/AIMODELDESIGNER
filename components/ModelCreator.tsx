@@ -1,9 +1,9 @@
 import React, { useState, useCallback, useEffect } from 'react';
-import { generateModel, improveSharpness, detectAgeCategory } from '../services/geminiService';
+import { generateModel, improveSharpness } from '../services/geminiService';
 import FileUpload from './FileUpload';
 import ControlPanel from './ControlPanel';
 import ImageDisplay from './ImageDisplay';
-import { PhotoIcon, BrainIcon, GenerateIcon, SparklesIcon as CustomizeIcon } from './icons';
+import { PhotoIcon, GenerateIcon, SparklesIcon as CustomizeIcon } from './icons';
 import Spinner from './Spinner';
 import { hairTemplates, expressionTemplates } from '../constants/hairTemplates';
 import { BodyShape, BustSize, ButtocksSize, WaistSize } from '../types';
@@ -21,6 +21,7 @@ const ModelCreator: React.FC = () => {
     const [gender, setGender] = useState<'female' | 'male'>('female');
     const [isHijab, setIsHijab] = useState<boolean>(false);
     const [useEnhancedPrompt, setUseEnhancedPrompt] = useState<boolean>(false);
+    const [isCloseUp, setIsCloseUp] = useState<boolean>(false);
 
     const [hairOption, setHairOption] = useState<'main-photo' | 'reference-photo' | 'manual' | 'template'>('main-photo');
     const [manualHair, setManualHair] = useState<string>('');
@@ -35,55 +36,28 @@ const ModelCreator: React.FC = () => {
     const [waistSize, setWaistSize] = useState<WaistSize>('Sedang');
     const [height, setHeight] = useState<number>(170);
 
-
-    const [generatedImage, setGeneratedImage] = useState<string | null>(null);
+    const [currentImage, setCurrentImage] = useState<string | null>(null);
+    const [history, setHistory] = useState<string[]>([]);
     const [isLoadingGeneration, setIsLoadingGeneration] = useState<boolean>(false);
     const [isImprovingSharpness, setIsImprovingSharpness] = useState<boolean>(false);
     const [error, setError] = useState<string | null>(null);
-
-    const [detectedAgeCategory, setDetectedAgeCategory] = useState<string | null>(null);
-    const [isDetectingAge, setIsDetectingAge] = useState<boolean>(false);
 
     useEffect(() => {
         setSelectedTemplate(hairTemplates[gender][0]);
     }, [gender]);
 
-    useEffect(() => {
-        if (detectedAgeCategory === 'Baby' || detectedAgeCategory === 'Child') {
-            setBustSize('Small');
-            setButtocksSize('Small');
-            setWaistSize('Sedang');
-        }
-    }, [detectedAgeCategory]);
-
-    const runAgeDetection = useCallback(async (base64Data: string) => {
-        setIsDetectingAge(true);
-        setDetectedAgeCategory(null);
-        try {
-            const category = await detectAgeCategory(base64Data);
-            setDetectedAgeCategory(category);
-        } catch (err) {
-            console.error("Age detection failed:", err);
-            setDetectedAgeCategory("Detection failed");
-        } finally {
-            setIsDetectingAge(false);
-        }
-    }, []);
-
     const handleImageUpload = (file: File) => {
         setImageFile(file);
-        setGeneratedImage(null);
+        setCurrentImage(null);
+        setHistory([]);
         setError(null);
         setHairOption('main-photo');
-        setDetectedAgeCategory(null);
         setIsHijab(false);
 
         const reader = new FileReader();
         reader.onloadend = () => {
             const result = reader.result as string;
             setImagePreview(result);
-            const base64Data = result.split(',')[1];
-            runAgeDetection(base64Data);
         };
         reader.readAsDataURL(file);
     };
@@ -137,7 +111,7 @@ const ModelCreator: React.FC = () => {
 
         setIsLoadingGeneration(true);
         setError(null);
-        setGeneratedImage(null);
+        setCurrentImage(null);
 
         try {
             const base64FaceData = imagePreview.split(',')[1];
@@ -147,7 +121,7 @@ const ModelCreator: React.FC = () => {
                 hairDescription,
                 improveFace,
                 selectedExpression,
-                detectedAgeCategory,
+                null, // Age detection is disabled
                 gender,
                 hairImageBase64,
                 bodyShape,
@@ -157,10 +131,13 @@ const ModelCreator: React.FC = () => {
                 height,
                 undefined, // customAttirePrompt - not used in this flow
                 isHijab,
-                95, // faceSimilarity
-                useEnhancedPrompt
+                100, // faceSimilarity
+                useEnhancedPrompt,
+                isCloseUp
             );
-            setGeneratedImage(`data:image/jpeg;base64,${result}`);
+            const newImage = `data:image/jpeg;base64,${result}`;
+            setCurrentImage(newImage);
+            setHistory(prev => [newImage, ...prev].slice(0, 10));
         } catch (err) {
             setError(err instanceof Error ? err.message : 'An unknown error occurred during model generation.');
         } finally {
@@ -168,27 +145,27 @@ const ModelCreator: React.FC = () => {
         }
     }, [
         imagePreview, hairImagePreview, hairOption, manualHair, selectedTemplate, improveFace,
-        selectedExpression, detectedAgeCategory, gender, bodyShape, bustSize, buttocksSize, waistSize, height, isHijab, useEnhancedPrompt
+        selectedExpression, gender, bodyShape, bustSize, buttocksSize, waistSize, height, isHijab, useEnhancedPrompt, isCloseUp
     ]);
 
     const handleImproveSharpness = useCallback(async () => {
-        if (!generatedImage) return;
+        if (!currentImage) return;
 
         setIsImprovingSharpness(true);
         setError(null);
         try {
-            const base64Data = generatedImage.split(',')[1];
+            const base64Data = currentImage.split(',')[1];
             const result = await improveSharpness(base64Data);
-            setGeneratedImage(`data:image/jpeg;base64,${result}`);
+            const newImage = `data:image/jpeg;base64,${result}`;
+            setCurrentImage(newImage);
+            setHistory(prev => [newImage, ...prev.filter(img => img !== currentImage)].slice(0, 10));
         } catch (err) {
             setError(err instanceof Error ? err.message : 'An unknown error occurred during sharpness improvement.');
         } finally {
             setIsImprovingSharpness(false);
         }
-    }, [generatedImage]);
+    }, [currentImage]);
     
-    const isChildDetected = detectedAgeCategory === 'Baby' || detectedAgeCategory === 'Child';
-
     return (
         <>
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
@@ -199,29 +176,6 @@ const ModelCreator: React.FC = () => {
                         title="1. Upload Face for Model Creation"
                         description="This is the primary photo for the model's face and identity."
                     />
-
-                    {imageFile && (
-                        <div className="p-4 bg-gray-900/50 rounded-lg">
-                            <h3 className="text-lg font-semibold text-gray-200 mb-2 flex items-center gap-2">
-                                <BrainIcon className="w-5 h-5 text-cyan-400" />
-                                Automated Analysis
-                            </h3>
-                            <div className="grid grid-cols-2 gap-x-4">
-                                <div>
-                                    {isDetectingAge ? (
-                                        <div className="flex items-center text-gray-400 text-sm">
-                                            <Spinner />
-                                            <span className="ml-2">Detecting Age...</span>
-                                        </div>
-                                    ) : (
-                                        <p className="text-gray-300 text-sm">
-                                            Detected Age: <span className="font-bold text-white">{detectedAgeCategory || 'N/A'}</span>
-                                        </p>
-                                    )}
-                                </div>
-                            </div>
-                        </div>
-                    )}
 
                     {imageFile && (
                         <div className="p-4 bg-gray-900/50 rounded-lg space-y-4">
@@ -249,10 +203,10 @@ const ModelCreator: React.FC = () => {
                                 </div>
                                 <div className="ml-3 text-sm leading-6">
                                     <label htmlFor="improve-face" className="font-medium text-gray-300">
-                                        Improve Face
+                                        Tune up wajah
                                     </label>
                                     <p id="improve-face-description" className="text-gray-500">
-                                        Enhance sharpness, brightness, and remove blemishes.
+                                        Menghilangkan jerawat, mencerahkan kulit, dan mempertajam detail wajah, mata, alis, dan rambut.
                                     </p>
                                 </div>
                             </div>
@@ -296,6 +250,26 @@ const ModelCreator: React.FC = () => {
                                     </p>
                                 </div>
                             </div>
+                            <div className="relative flex items-start">
+                                <div className="flex h-6 items-center">
+                                    <input
+                                        id="is-close-up"
+                                        name="is-close-up"
+                                        type="checkbox"
+                                        checked={isCloseUp}
+                                        onChange={(e) => setIsCloseUp(e.target.checked)}
+                                        className="h-4 w-4 rounded border-gray-600 bg-gray-800 text-cyan-600 focus:ring-cyan-500"
+                                    />
+                                </div>
+                                <div className="ml-3 text-sm leading-6">
+                                    <label htmlFor="is-close-up" className="font-medium text-gray-300">
+                                        Generate Close-up Photo
+                                    </label>
+                                    <p id="is-close-up-description" className="text-gray-500">
+                                        Foto postcard setengah badan (perut ke kepala), kualitas profesional dengan detail kulit super realistis.
+                                    </p>
+                                </div>
+                            </div>
                         </div>
                     )}
 
@@ -325,7 +299,8 @@ const ModelCreator: React.FC = () => {
                                 setWaistSize={setWaistSize}
                                 height={height}
                                 setHeight={setHeight}
-                                isChildDetected={isChildDetected}
+                                isChildDetected={false}
+                                isCloseUp={isCloseUp}
                             />
                         </div>
                     )}
@@ -342,7 +317,7 @@ const ModelCreator: React.FC = () => {
 
                 {/* Right Column: Output */}
                 <div className="flex flex-col gap-6 bg-gray-800/50 p-6 rounded-2xl border border-gray-700 shadow-2xl min-h-[500px]">
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6 flex-grow">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                         <div className="flex flex-col">
                             <h3 className="text-xl font-semibold text-cyan-400 mb-4">Original Photo</h3>
                             {imagePreview ? (
@@ -358,7 +333,7 @@ const ModelCreator: React.FC = () => {
                         </div>
                         <div className="flex flex-col">
                             <ImageDisplay
-                                imageUrl={generatedImage}
+                                imageUrl={currentImage}
                                 isLoading={isLoadingGeneration}
                                 onRegenerate={handleGenerate}
                                 onImproveSharpness={handleImproveSharpness}
@@ -367,6 +342,28 @@ const ModelCreator: React.FC = () => {
                             />
                         </div>
                     </div>
+                     {history.length > 0 && (
+                        <div className="mt-auto pt-4 border-t border-gray-700">
+                            <h4 className="text-lg font-semibold text-cyan-400 mb-3">Generation History</h4>
+                            <div className="flex gap-3 overflow-x-auto pb-2 -mb-2">
+                                {history.map((histImg, index) => (
+                                    <div 
+                                        key={index}
+                                        className="flex-shrink-0 cursor-pointer"
+                                        onClick={() => setCurrentImage(histImg)}
+                                        role="button"
+                                        aria-label={`View history item ${index + 1}`}
+                                    >
+                                        <img 
+                                            src={histImg} 
+                                            alt={`History ${index + 1}`}
+                                            className={`w-24 h-24 object-cover rounded-md border-2 transition-all ${currentImage === histImg ? 'border-cyan-400 scale-105' : 'border-transparent hover:border-gray-500'}`}
+                                        />
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    )}
                 </div>
             </div>
         </>

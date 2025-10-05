@@ -3,10 +3,11 @@ import React, { useState } from 'react';
 import { LockIcon } from './icons';
 
 interface PinLockProps {
-  onUnlock: () => void;
+  onUnlock: (isUnlimited: boolean) => void;
 }
 
-const CORRECT_PIN = '24';
+const LIMITED_PIN = '91';
+const UNLIMITED_PIN = '24';
 
 const PinLock: React.FC<PinLockProps> = ({ onUnlock }) => {
   const [pin, setPin] = useState('');
@@ -22,9 +23,12 @@ const PinLock: React.FC<PinLockProps> = ({ onUnlock }) => {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (pin === CORRECT_PIN) {
-      onUnlock();
-    } else {
+    if (pin === LIMITED_PIN) {
+      onUnlock(false);
+    } else if (pin === UNLIMITED_PIN) {
+      onUnlock(true);
+    }
+    else {
       setError('Invalid PIN. Please try again.');
       setPin('');
     }

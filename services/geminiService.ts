@@ -11,8 +11,9 @@ const getImageFromResponse = (response: GenerateContentResponse): string => {
     // FIX: Correctly extract image data from the response candidate parts.
     // The model can output both text and image, so we must find the image part.
     for (const candidate of response.candidates ?? []) {
+        // FIX: Corrected typo `the part` to `const part` and added check for image mimeType.
         for (const part of candidate.content.parts) {
-            if (part.inlineData?.data) {
+            if (part.inlineData?.data && part.inlineData.mimeType?.startsWith('image/')) {
                 return part.inlineData.data;
             }
         }
@@ -32,6 +33,7 @@ const getBase64Part = (base64Data: string, mimeType: string = 'image/jpeg'): Par
 
 // --- Function Implementations ---
 
+// FIX: Completed the function implementation to ensure it always constructs a prompt, makes an API call, and returns a value.
 export const generateModel = async (
     base64FaceData: string,
     hairDescription: string,
@@ -48,7 +50,8 @@ export const generateModel = async (
     customAttirePrompt?: string,
     isHijab?: boolean,
     faceSimilarity: number = 95,
-    useEnhancedPrompt?: boolean
+    useEnhancedPrompt?: boolean,
+    isCloseUp?: boolean
 ): Promise<string> => {
     const parts: Part[] = [];
     const faceImagePart = getBase64Part(base64FaceData);
@@ -60,231 +63,295 @@ export const generateModel = async (
         parts.push(hairImagePart);
     }
     
-    let bodyPrompt;
-
-    if (ageCategory === 'Baby' || ageCategory === 'Child') {
-        // Child logic
-        bodyPrompt = `The model is a child and MUST be wearing a plain, short-sleeved white t-shirt and plain white long pants made of a soft, comfortable jersey/kaos material. The clothing must be simple, modest, and appropriate for a child.`;
-        // Modify for child female with hijab
-        if (isHijab && gender === 'female') {
-            bodyPrompt = `The model is a child and MUST be wearing a simple, plain white hijab, a plain, long-sleeved white t-shirt, and plain white long pants. The clothing must be simple, modest, and appropriate for a child.`;
-        }
-    } else {
-        // Adult logic
-        if (gender === 'male') {
-            bodyPrompt = `The model has a ${bodyShape} body shape. For the male model, waist size is ${waistSize}. The model MUST be wearing a plain white t-shirt and white pants made of a soft, comfortable jersey/kaos material.`;
-        } else { // female
-            const femaleBodyShape = `The model has a ${bodyShape} body shape. For the female model, waist size is ${waistSize}, bust size is ${bustSize}, and buttocks size is ${buttocksSize}.`;
-            if (isHijab) {
-                bodyPrompt = `${femaleBodyShape} The model MUST be wearing a simple, plain white hijab, a plain, long-sleeved white t-shirt, and plain white pants.`;
-            } else {
-                bodyPrompt = `${femaleBodyShape} The model MUST be wearing a plain, tight-fitting white t-shirt, white leggings made of a soft, comfortable jersey/kaos material, and white sneakers.`;
-            }
-        }
-    }
-    
-    const attirePrompt = customAttirePrompt ? `The model's attire is as follows: ${customAttirePrompt}` : bodyPrompt;
-    
     const expressionPrompt = expression === "Same as uploaded photo" ? "The model should have the exact same facial expression as in the main uploaded photo." : `The model's facial expression should be: ${expression}.`;
+    
+    let finalPrompt = '';
 
-    const enhancedPromptText = `contrasting beautifully with the bright subject. Maintain exact details of both faces and hair from the uploaded reference photos, preserving realistic skin texture, natural expressions, and photorealistic quality.`;
+    const tuneUpPrompt = 'Apply the following facial tune-ups: remove acne, make the skin look brighter, remove skin blemishes, apply sharp detail to the eyes, hair, and eyebrows, and ensure the detail of skin pores is visible and realistic. The core facial structure and identity MUST NOT be altered.';
 
-    const finalPrompt = `
-        **Primary Goal:** Generate a new, full-body, photorealistic image of a model by compositing a face onto a newly generated body and hair.
+    if (isCloseUp) {
+        let hairAndAttireSection = '';
 
-        **UNBREAKABLE CORE RULE #1: COMPLETE BODY VISIBILITY.** The generated image MUST be a full-body shot. The model's entire body, from the top of their head to the soles of their feet, MUST be visible within the frame. Cropping of the head, hands, or feet is considered a CATASTROPHIC FAILURE and is strictly forbidden. This is an absolute, non-negotiable requirement.
+        if (isHijab && gender === 'female') {
+            hairAndAttireSection = `
+            **UNBREAKABLE CORE RULE #2: FRAMING & ATTIRE.**
+            - **Framing:** The image MUST be a postcard-style half-body portrait, framed from the stomach up to the top of the head.
+            - **Aspect Ratio:** The final output MUST be a 3:4 portrait aspect ratio.
+            - **Attire:** The model MUST be wearing a simple, plain, solid white hijab. The hijab must cover the hair completely. The top visible under the hijab should also be a simple, plain white fabric that complements the hijab.
 
-        **UNBREAKABLE CORE RULE #2: FACE IDENTITY PRESERVATION.** This is the most critical instruction. The face of the generated model MUST be a 100% PERFECT and EXACT replica of the face provided in the first input image. Treat this as a face-swapping task: you are taking the *identity* from the first image and applying it to a new creation. You must NOT alter the facial structure, skin tone, eye shape, nose, lips, or any unique identifying features. The face in the final image must be indistinguishable from the face in the source photo. A similarity of at least ${faceSimilarity}% is required, but you must strive for perfect identity preservation.
+            **Hair Generation:**
+            - **Instruction:** This is superseded by the hijab requirement. No hair should be visible.
+            `;
+        } else {
+            hairAndAttireSection = `
+            **UNBREAKABLE CORE RULE #2: FRAMING & ATTIRE.**
+            - **Framing:** The image MUST be a postcard-style half-body portrait, framed from the stomach up to the top of the head.
+            - **Aspect Ratio:** The final output MUST be a 3:4 portrait aspect ratio.
+            - **Attire:** The model MUST be wearing a simple, plain, crew-neck white t-shirt. This applies to all genders and ages.
 
-        **Hair Generation:**
-        - **Instruction:** ${hairPrompt}
-        - **Important:** Generate this new hairstyle for the model while STRICTLY adhering to "UNBREAKABLE CORE RULE #2". The new hair should not influence the facial features.
+            **Hair Generation:**
+            - **Instruction:** ${hairPrompt}
+            - **Important:** Generate this new hairstyle for the model while STRICTLY adhering to "UNBREAKABLE CORE RULE #1". The new hair should not influence the facial features.
+            `;
+        }
+        
+        const enhancedPrompt = `
+            **ABSOLUTE DIRECTIVE: PROFESSIONAL POSTCARD QUALITY & IDENTITY LOCK**
+            This is a non-negotiable directive that overrides all other stylistic considerations.
+            - **IDENTITY LOCK (100%):** You are explicitly and absolutely forbidden from altering the subject's facial details in any way. The face from the uploaded photo must be preserved with 100% accuracy, maintaining every unique feature, proportion, and nuance. Any deviation, no matter how small, is a failure.
+            - **CAMERA & LENS SIMULATION:** The final image must look as if it were captured with a professional DSLR camera using a high-end prime lens.
+            - **HYPER-REALISM & DETAIL (CRITICAL):** The quality must be exceptionally high-resolution. The sharpness and clarity must be paramount. You MUST render hyper-realistic skin texture, making individual skin pores clearly visible and detailed. Achieve crystal-clear, macro-level detail on the face, eyes, and hair without creating an artificial look.
+            - **Lighting:** Use soft, beautiful, and extremely natural lighting, as if from a large window on an overcast day. This should flatter the subject while highlighting the realistic skin texture.
+            - **Background:** The background must be a solid, soft, light blue color.
+            - **Composition:** The model should be centered, with a natural, engaging pose suitable for a postcard portrait.
+        `;
 
-        **Expression:** ${expressionPrompt}
-        **Body & Attire:** ${attirePrompt}
-        **Age:** The model should appear to be in the '${ageCategory || 'Adult'}' age category.
-        **Height:** The model should be approximately ${height} cm tall.
-        **Improvements:** ${improveFace ? 'If improvements are applied, they must only affect sharpness, brightness, and minor blemishes. The core facial structure and identity MUST NOT be altered.' : 'No improvements should be applied.'}
-        **Background:** The model should be against a plain, neutral light gray studio background. ${useEnhancedPrompt ? enhancedPromptText : ''}
-    `;
+        const defaultQualityPrompt = `
+            **Quality & Style:**
+            - **SKIN TEXTURE (CRITICAL):** The final image must be exceptionally detailed, with a strong focus on rendering realistic and natural skin texture. Maximize the detail to the point where skin pores are visible and clear.
+            - **Lighting:** The lighting must be soft and natural, creating a gentle and flattering look. The light source should be primarily from the front, illuminating the subject clearly.
+            - **Background:** The background must be a solid, soft, light blue color.
+            - **Sharpness:** The image should be very sharp and clear, as if taken by a professional camera.
+        `;
+        
+        finalPrompt = `
+            **Primary Goal:** Generate an extraordinary, photorealistic, postcard-style half-body portrait of a model.
+
+            **UNBREAKABLE CORE RULE #1: PERFECT FACE IDENTITY PRESERVATION.**
+            This is the most critical instruction. The face of the generated model MUST be a 100% PERFECT and EXACT replica of the face provided in the first input image. Treat this as a face-swapping task: you are taking the *identity* from the first image and applying it to a new creation. You must NOT alter the facial structure, skin tone, eye shape, nose, lips, or any unique identifying features. A similarity of ${faceSimilarity}% is MANDATORY. You MUST achieve perfect 100% identity preservation without any alterations.
+
+            ${hairAndAttireSection}
+
+            **Body Shape Impression:**
+            - The model's visible torso (stomach to shoulders) should subtly reflect a '${bodyShape}' body shape. For example, an 'Athletic' shape might have a more defined core and broader shoulders, while a 'Curvy' shape would show a more defined waist-to-hip ratio. This is a subtle but important detail to convey the overall physique within the half-body frame.
+
+            **Expression:** ${expressionPrompt}
+            **Age:** The model should appear to be in the '${ageCategory || 'Adult'}' age category.
+            
+            ${useEnhancedPrompt ? enhancedPrompt : defaultQualityPrompt}
+            
+            **Improvements:** ${improveFace ? tuneUpPrompt : 'No improvements should be applied.'}
+        `;
+    } else {
+        let bodyPrompt;
+        const defaultQualityPrompt = `
+            **Quality & Style:**
+            - **SKIN TEXTURE (CRITICAL):** The final image must be exceptionally detailed, with a strong focus on rendering realistic and natural skin texture. Maximize the detail to the point where skin pores are visible and clear.
+            - **Lighting:** The lighting must be soft and natural, creating a gentle and flattering look. The light source should be primarily from the front, illuminating the subject clearly.
+            - **Background:** The background must be a solid, soft, light blue color.
+            - **Sharpness:** The image should be very sharp and clear, as if taken by a professional camera.
+        `;
+
+        const enhancedPrompt = `
+            **ABSOLUTE DIRECTIVE: PROFESSIONAL QUALITY & IDENTITY LOCK**
+            - **IDENTITY LOCK (100%):** You are explicitly and absolutely forbidden from altering the subject's facial details in any way. The face from the uploaded photo must be preserved with 100% accuracy.
+            - **CAMERA & LENS SIMULATION:** The final image must look as if it were captured with a professional DSLR camera using a high-end prime lens.
+            - **HYPER-REALISM & DETAIL (CRITICAL):** The quality must be exceptionally high-resolution. Render hyper-realistic skin texture, making individual skin pores clearly visible.
+            - **Lighting:** Use soft, natural lighting.
+            - **Background:** The background must be a solid, soft, light blue color.
+        `;
+
+        if (ageCategory === 'Baby' || ageCategory === 'Child') {
+            bodyPrompt = `The model is a ${ageCategory}. The body should be age-appropriate and natural. The model is wearing a simple white t-shirt and white pants.`;
+        } else {
+            let attirePrompt;
+            if (customAttirePrompt) {
+                attirePrompt = customAttirePrompt;
+            } else if (isHijab) {
+                attirePrompt = 'The model MUST be wearing a simple, plain, solid white hijab, a matching white t-shirt, and plain white long pants.';
+            } else if (gender === 'female') {
+                attirePrompt = 'The model MUST be wearing a tight white crop top t-shirt, tight white leggings, and white sneakers.';
+            } else { // male, no hijab
+                attirePrompt = 'The model MUST be wearing a white oversized t-shirt, black ankle-length fabric trousers, and white sneakers.';
+            }
+
+             bodyPrompt = `
+                **UNBREAKABLE CORE RULE #2: BODY, POSE & ATTIRE.**
+                - **Framing:** The image MUST be a full-body portrait, showing the entire body from head to toe.
+                - **Pose:** The model must be in a random, improved, natural standing pose. The pose should look dynamic and engaging, suitable for a model photoshoot.
+                - **Aspect Ratio:** The final output MUST be a 3:4 portrait aspect ratio.
+                - **Attire:** ${attirePrompt}
+                
+                **Body Generation:**
+                - **Height:** The model's height should be approximately ${height} cm.
+                - **Body Shape:** The model's physique should represent a '${bodyShape}' body shape.
+                - **Bust Size (if applicable):** ${gender === 'female' ? bustSize : 'N/A'}.
+                - **Buttocks Size (if applicable):** ${gender === 'female' ? buttocksSize : 'N/A'}.
+                - **Waist Size:** ${waistSize}.
+            `;
+        }
+
+        finalPrompt = `
+            **Primary Goal:** Generate an extraordinary, photorealistic, full-body portrait of a model.
+
+            **UNBREAKABLE CORE RULE #1: PERFECT FACE IDENTITY PRESERVATION.**
+            This is the most critical instruction. The face of the generated model MUST be a 100% PERFECT and EXACT replica of the face provided in the first input image. Treat this as a face-swapping task: you are taking the *identity* from the first image and applying it to a new creation. You must NOT alter the facial structure, skin tone, eye shape, nose, lips, or any unique identifying features. A similarity of ${faceSimilarity}% is MANDATORY.
+
+            ${bodyPrompt}
+
+            **Hair Generation:**
+            - **Instruction:** ${hairPrompt}
+            - **Important:** Generate this new hairstyle for the model while STRICTLY adhering to "UNBREAKABLE CORE RULE #1".
+
+            **Expression:** ${expressionPrompt}
+            **Age:** The model should appear to be in the '${ageCategory || 'Adult'}' age category.
+
+            ${useEnhancedPrompt ? enhancedPrompt : defaultQualityPrompt}
+
+            **Improvements:** ${improveFace ? tuneUpPrompt : 'No improvements should be applied.'}
+        `;
+    }
 
     parts.push({ text: finalPrompt });
-    
-    // FIX: Added missing Gemini API call and return statement. The function was not returning a value.
+
     const response = await ai.models.generateContent({
-        model: 'gemini-2.5-flash-image-preview',
+        model: 'gemini-2.5-flash-image',
         contents: { parts },
         config: {
             responseModalities: [Modality.IMAGE, Modality.TEXT],
+            seed: 42,
         },
     });
 
     return getImageFromResponse(response);
 };
-
-// FIX: Added missing functions that were imported in App.tsx but not exported from this file.
 
 export const improveSharpness = async (base64ImageData: string): Promise<string> => {
     const imagePart = getBase64Part(base64ImageData);
-    const prompt = "Improve the sharpness and clarity of this image. Do not change the content or composition.";
-    
+    const promptPart = {
+        text: "Improve the sharpness and clarity of this image. Enhance the details, especially on the face, eyes, and hair. Make the skin texture more realistic and visible. Do not change the composition or the person's identity.",
+    };
+
     const response = await ai.models.generateContent({
-        model: 'gemini-2.5-flash-image-preview',
-        contents: { parts: [imagePart, { text: prompt }] },
+        model: 'gemini-2.5-flash-image',
+        contents: { parts: [imagePart, promptPart] },
         config: {
             responseModalities: [Modality.IMAGE, Modality.TEXT],
+            seed: 42,
         },
     });
 
     return getImageFromResponse(response);
 };
 
-export const detectAgeCategory = async (base64ImageData: string): Promise<string> => {
-    const imagePart = getBase64Part(base64ImageData);
-    const prompt = "Analyze the person in this image and determine their age category. Choose from one of the following: Baby, Child, Teenager, Adult, Senior. Return the result in JSON format with a single key 'ageCategory'.";
-    
-    const response = await ai.models.generateContent({
-        model: 'gemini-2.5-flash',
-        contents: { parts: [imagePart, { text: prompt }] },
-        config: {
-            responseMimeType: "application/json",
-            responseSchema: {
-                type: Type.OBJECT,
-                properties: {
-                    ageCategory: { type: Type.STRING },
-                },
-                required: ['ageCategory']
-            },
-        },
-    });
-
-    const json = JSON.parse(response.text);
-    return json.ageCategory;
-};
-
-export const identifyClothing = async (images: { fullDress?: string; top?: string; bottoms?: string; footwear?: string; }): Promise<ClothingAnalysis> => {
+export const identifyClothing = async (images: {
+  fullDress?: string;
+  top?: string;
+  bottoms?: string;
+  footwear?: string;
+}): Promise<ClothingAnalysis> => {
     const parts: Part[] = [];
-    let prompt = "Analyze the provided image(s) and describe the clothing items. ";
+    let promptText = "Analyze the clothing item(s) in the following image(s) and provide a detailed description for each category. If a 'fullDress' image is provided, analyze it as a complete outfit. Otherwise, analyze the individual items. Also describe any visible accessories.";
 
     if (images.fullDress) {
         parts.push(getBase64Part(images.fullDress));
-        prompt += "This is a full outfit. Describe it as a whole under the 'fullOutfit' key.";
+        promptText += " Focus on the full outfit.";
     } else {
-        prompt += "These are separate clothing items. "
-        if (images.top) {
-            parts.push(getBase64Part(images.top));
-            prompt += "Describe the 'top'. ";
-        }
-        if (images.bottoms) {
-            parts.push(getBase64Part(images.bottoms));
-            prompt += "Describe the 'bottoms'. ";
-        }
-        if (images.footwear) {
-            parts.push(getBase64Part(images.footwear));
-            prompt += "Describe the 'footwear'. ";
-        }
+        if (images.top) parts.push(getBase64Part(images.top));
+        if (images.bottoms) parts.push(getBase64Part(images.bottoms));
+        if (images.footwear) parts.push(getBase64Part(images.footwear));
     }
+
+    parts.push({ text: promptText });
     
-    prompt += "Return the result as JSON. Only include keys for the items you can identify."
-    parts.push({ text: prompt });
+    const responseSchema = {
+        type: Type.OBJECT,
+        properties: {
+            fullOutfit: { type: Type.STRING, description: 'A description of the complete outfit if a single photo is provided.' },
+            top: { type: Type.STRING, description: 'A description of the top clothing item.' },
+            bottoms: { type: Type.STRING, description: 'A description of the bottom clothing item.' },
+            footwear: { type: Type.STRING, description: 'A description of the footwear.' },
+            accessories: { type: Type.STRING, description: 'A description of any accessories.' },
+        },
+    };
 
     const response = await ai.models.generateContent({
         model: 'gemini-2.5-flash',
         contents: { parts },
         config: {
-            responseMimeType: "application/json",
-            responseSchema: {
-                type: Type.OBJECT,
-                properties: {
-                    fullOutfit: { type: Type.STRING },
-                    top: { type: Type.STRING },
-                    bottoms: { type: Type.STRING },
-                    footwear: { type: Type.STRING },
-                },
-            },
+            responseMimeType: 'application/json',
+            responseSchema,
+            seed: 42,
         },
     });
 
-    return JSON.parse(response.text) as ClothingAnalysis;
+    const jsonText = response.text.trim();
+    return JSON.parse(jsonText) as ClothingAnalysis;
 };
 
-interface PoseConfig {
-    mode: 'image' | 'text';
-    poseImageBase64?: string;
-    posePrompt?: string;
-    objectImagesBase64?: string[];
-    poseReferenceType?: 'realistic' | 'sketch';
-}
-interface ModelInput {
-    imageBase64: string;
-    gender: 'female' | 'male';
-}
-interface PoseOptions {
-    poseStyle?: 'realistic' | 'sketch';
-    aspectRatio?: string;
-    isAspectRatioLocked?: boolean;
-    lightingStyle?: string;
-    shotStyle?: string;
-}
+export const detectAgeCategory = async (base64FaceData: string): Promise<string> => {
+    const imagePart = getBase64Part(base64FaceData);
+    const promptPart = { text: "Analyze the person in the image and determine their age category from the following options: 'Baby', 'Child', 'Adult'. Respond with only one of these words." };
+
+    const response = await ai.models.generateContent({
+        model: 'gemini-2.5-flash',
+        contents: { parts: [imagePart, promptPart] },
+        config: {
+            seed: 42,
+        },
+    });
+    
+    const text = response.text.trim();
+    if (['Baby', 'Child', 'Adult'].includes(text)) {
+        return text;
+    }
+    return 'Adult';
+};
+
+export const translateText = async (text: string, targetLanguage: string): Promise<string> => {
+    const prompt = `Translate the following text to ${targetLanguage}: "${text}"`;
+    const response = await ai.models.generateContent({
+        model: 'gemini-2.5-flash',
+        contents: prompt,
+        config: {
+            seed: 42,
+        },
+    });
+    return response.text.trim();
+};
 
 export const changePose = async (
-    models: ModelInput[],
-    poseConfig: PoseConfig,
-    options: PoseOptions,
-    faceSimilarity: number = 95
+    modelInputs: { imageBase64: string; gender: 'female' | 'male' }[],
+    poseConfig: { mode: 'image'; poseImageBase64: string; poseReferenceType: 'realistic' | 'sketch' } | { mode: 'text'; posePrompt: string; objectImagesBase64: string[] },
+    outputConfig: { aspectRatio?: string; isAspectRatioLocked?: boolean; lightingStyle?: string; shotStyle?: string },
+    faceSimilarity: number
 ): Promise<string> => {
     const parts: Part[] = [];
-    let prompt = "Recreate the people from the input images in a new scene. ";
-    models.forEach((model, index) => {
-        parts.push(getBase64Part(model.imageBase64));
-        prompt += `Person ${index + 1} (gender: ${model.gender}) should have their face, identity, and CLOTHING preserved exactly as in their corresponding input image, maintaining at least ${faceSimilarity}% facial similarity. `;
+    modelInputs.forEach(input => {
+        parts.push(getBase64Part(input.imageBase64));
     });
 
-    if (poseConfig.mode === 'image' && poseConfig.poseImageBase64) {
+    let prompt = '';
+    if (poseConfig.mode === 'image') {
         parts.push(getBase64Part(poseConfig.poseImageBase64));
-        if (poseConfig.poseReferenceType === 'sketch') {
-            prompt += `
-                **CRITICAL POSE INSTRUCTION (FROM SKETCH):** The following image is a sketch provided ONLY as a reference for posing. You MUST map each input person (Person 1, Person 2, etc.) to a figure in the sketch, recreating the pose with photorealism. **DO NOT** include the sketch's art style, lines, or any of the drawn figures in the final output. The final image should be photorealistic and contain ONLY the models from the input photos, but in the new poses from the sketch. The number of people in the final image MUST exactly match the number of input models.
-            `;
-        } else { // 'realistic'
-            prompt += `All people should be posed EXACTLY like the people in the pose reference image, which is a realistic photograph. The number of people and their positions must match. `;
-        }
-    } else if (poseConfig.mode === 'text' && poseConfig.posePrompt) {
-        prompt += `The pose is described as: '${poseConfig.posePrompt}'. The style should be ${options.poseStyle || 'realistic'}. `;
-        if (poseConfig.objectImagesBase64 && poseConfig.objectImagesBase64.length > 0) {
-            poseConfig.objectImagesBase64.forEach(objBase64 => {
-                parts.push(getBase64Part(objBase64));
-            });
-            prompt += "The models should interact with the provided objects. ";
-        }
+        prompt = `Recreate the pose from the last provided image (${poseConfig.poseReferenceType} reference) using the people from the first ${modelInputs.length} image(s).`;
+    } else { // text mode
+        poseConfig.objectImagesBase64.forEach(objBase64 => {
+            parts.push(getBase64Part(objBase64));
+        });
+        prompt = poseConfig.posePrompt;
+    }
+    
+    prompt += ` Preserve the faces and identities of the people with ${faceSimilarity}% similarity.`;
+
+    if (outputConfig.shotStyle && outputConfig.shotStyle !== 'Original') {
+        prompt += ` The final image should have a '${outputConfig.shotStyle}' style.`;
+    }
+    if (outputConfig.lightingStyle && outputConfig.lightingStyle !== 'Original') {
+        prompt += ` The lighting should be '${outputConfig.lightingStyle}'.`;
+    }
+    if (outputConfig.aspectRatio && outputConfig.aspectRatio !== 'Original') {
+        prompt += ` The final image aspect ratio must be ${outputConfig.aspectRatio}.`;
     }
 
-    if (options.aspectRatio && options.aspectRatio !== 'Original') {
-        prompt += `The output image must have an aspect ratio of ${options.aspectRatio}. `;
-        if (options.isAspectRatioLocked) {
-             prompt += `This aspect ratio is locked and MUST be adhered to. `;
-        }
-    }
-    if (options.lightingStyle) {
-        prompt += `The lighting should be '${options.lightingStyle}'. `;
-    }
-    if (options.shotStyle) {
-        prompt += `The camera shot style should be '${options.shotStyle}'. `;
-    }
-
-    prompt += " The background should be a neutral gray studio background.";
-    
-    // Add the user-requested enhancement to the final prompt.
-    const enhancedPromptText = " (do not change the face from the attached reference photo) very contrast with the bright subject. Maintain the exact facial and hair details of the uploaded reference photo, maintain realistic skin texture, natural expressions, and photorealistic quality.";
-    prompt += enhancedPromptText;
-    
     parts.push({ text: prompt });
 
     const response = await ai.models.generateContent({
-        model: 'gemini-2.5-flash-image-preview',
+        model: 'gemini-2.5-flash-image',
         contents: { parts },
         config: {
             responseModalities: [Modality.IMAGE, Modality.TEXT],
+            seed: 42,
         },
     });
 
@@ -292,90 +359,92 @@ export const changePose = async (
 };
 
 export const changeBackground = async (
-    base64Image: string,
-    backgroundPrompt: string,
+    base64Images: string[],
+    prompt: string,
     shotStyle: string,
-    lightStyle: string
+    lightStyle: string,
+    aspectRatio: string,
+    isAspectRatioLocked: boolean
 ): Promise<string> => {
-    const imagePart = getBase64Part(base64Image);
-    const prompt = `
-        Change the background of this image. The new background should be: '${backgroundPrompt}'.
-        Preserve the foreground subject(s) EXACTLY as they are. Do not change their pose, clothing, or appearance.
-        The camera shot style should be '${shotStyle}'.
-        The lighting style should be '${lightStyle}'.
-    `;
+    const parts: Part[] = base64Images.map(img => getBase64Part(img));
     
+    let finalPrompt = prompt;
+
+    if (!finalPrompt.includes("shot style")) {
+      finalPrompt += ` The shot style should be '${shotStyle}'.`;
+    }
+    if (!finalPrompt.includes("lighting")) {
+        finalPrompt += ` The lighting should be '${lightStyle}'.`;
+    }
+    if (aspectRatio !== 'Original' && isAspectRatioLocked && !finalPrompt.includes("aspect ratio")) {
+        finalPrompt += ` The final image must have an aspect ratio of ${aspectRatio}.`;
+    }
+    
+    parts.push({ text: finalPrompt });
+
     const response = await ai.models.generateContent({
-        model: 'gemini-2.5-flash-image-preview',
-        contents: { parts: [imagePart, { text: prompt }] },
+        model: 'gemini-2.5-flash-image',
+        contents: { parts },
         config: {
             responseModalities: [Modality.IMAGE, Modality.TEXT],
+            seed: 42,
         },
     });
 
     return getImageFromResponse(response);
 };
 
-export const translateText = async (text: string, targetLanguage: string): Promise<string> => {
+export const analyzePose = async (base64ImageData: string): Promise<string> => {
+    const imagePart = getBase64Part(base64ImageData);
+    const promptPart = { text: "Analyze the person's pose in this image, focusing strictly on the physical posture. Describe the shape of the pose, body proportions, and facial/body expression. Ignore clothing, hair color, and background details. Keep the analysis concise and suitable for an AI image generator." };
+
     const response = await ai.models.generateContent({
         model: 'gemini-2.5-flash',
-        contents: `Translate the following text to ${targetLanguage}. Provide only the translated text, with no extra explanations or preamble: "${text}"`,
+        contents: { parts: [imagePart, promptPart] },
+        config: {
+            seed: 42,
+        },
     });
-    return response.text;
+
+    return response.text.trim();
 };
 
-export const analyzePose = async (base64Image: string): Promise<string> => {
-    const imagePart = getBase64Part(base64Image);
-    const prompt = "Analyze the pose of the person in this image. Provide a detailed, descriptive text that could be used as an AI prompt to recreate this exact pose. Describe body part positions, angles, and the overall posture and emotion conveyed.";
+export const analyzePoseAndClothing = async (poseImageBase64: string, clothingImageBase64: string): Promise<string> => {
+    const poseImagePart = getBase64Part(poseImageBase64);
+    const clothingImagePart = getBase64Part(clothingImageBase64);
     
+    const promptPart = {
+        text: `You are an expert prompt engineer for an AI image generator. Your task is to combine information from two images into a single, cohesive prompt.
+1. From the first image (the pose reference), provide a detailed, anatomical description of the person's pose. Focus strictly on the physical posture, body shape, and expression. Completely ignore the clothing, hair, and background in this first image.
+2. From the second image (the clothing reference), provide a detailed description of the full outfit shown, including top, bottoms, footwear, and any accessories.
+3. Combine these two descriptions into a single, clear prompt that instructs an AI to generate a photorealistic image of a person in the specified pose wearing the specified clothing. The final output should ONLY be the combined prompt text.`
+    };
+
     const response = await ai.models.generateContent({
         model: 'gemini-2.5-flash',
-        contents: { parts: [imagePart, { text: prompt }] },
+        contents: { parts: [poseImagePart, clothingImagePart, promptPart] },
+        config: {
+            seed: 42,
+        },
     });
-    return response.text;
+
+    return response.text.trim();
 };
 
 export const improvePrompt = async (prompt: string): Promise<string> => {
-    const response = await ai.models.generateContent({
-        model: 'gemini-2.5-flash',
-        contents: `You are a prompt engineering expert for generative AI. Your task is to take a user's prompt and make it more vivid, detailed, and effective for generating high-quality images. Improve the following prompt: "${prompt}"`,
-    });
-    return response.text;
-};
-
-export const analyzeImageForPrompt = async (base64Image: string): Promise<string> => {
-    const imagePart = getBase64Part(base64Image);
-    const prompt = "You are an expert art director. Describe this image in extreme detail. Your description will be used as a text prompt for an AI image generator. Cover subject, composition, lighting, style, color palette, and any fine details. Be verbose and evocative.";
+    const systemInstruction = "You are a prompt engineering expert for AI image generation models. Your task is to take a user's simple prompt and enhance it into a more descriptive, detailed, and evocative prompt that will produce a higher quality, more artistic image. Add details about composition, lighting, style, and camera settings.";
+    const userPrompt = `Improve this prompt: "${prompt}"`;
     
     const response = await ai.models.generateContent({
         model: 'gemini-2.5-flash',
-        contents: { parts: [imagePart, { text: prompt }] },
-    });
-    return response.text;
-};
-
-export const summarizePrompt = async (detailedPrompt: string, detailLevel: 'Concise' | 'Detailed' | 'Artistic'): Promise<string> => {
-    let systemInstruction = "";
-    switch(detailLevel) {
-        case 'Concise':
-            systemInstruction = "You are a prompt summarizer. Your task is to take a very long, detailed description and condense it into a short, effective prompt for an AI image generator, focusing only on the most critical elements.";
-            break;
-        case 'Detailed':
-            systemInstruction = "You are a prompt editor. Your task is to refine a long, detailed description into a well-structured and effective prompt for an AI image generator, keeping a high level of detail but improving clarity and flow.";
-            break;
-        case 'Artistic':
-            systemInstruction = "You are a creative writer for AI prompts. Your task is to take a long, detailed description and transform it into an artistic and evocative prompt, using creative language to capture the mood and style while retaining key details.";
-            break;
-    }
-    
-    const response = await ai.models.generateContent({
-        model: 'gemini-2.5-flash',
-        contents: `Based on your role, process the following text: "${detailedPrompt}"`,
+        contents: userPrompt,
         config: {
             systemInstruction: systemInstruction,
+            seed: 42,
         }
     });
-    return response.text;
+
+    return response.text.trim();
 };
 
 export const editWithNanoBanana = async (
@@ -383,71 +452,289 @@ export const editWithNanoBanana = async (
     prompt: string,
     shotStyle: string,
     lightStyle: string,
-    aspectRatio: string
+    aspectRatio: string,
+    preserveFaceDetails: boolean,
+    maskBase64: string | null,
+    hasMaskedReference: boolean
 ): Promise<string> => {
-    const imageParts: Part[] = base64Images.map(img => getBase64Part(img));
-    const enhancedPromptText = " (do not change the face from the attached reference photo) very contrast with the bright subject. Maintain the exact facial and hair details of the uploaded reference photo, maintain realistic skin texture, natural expressions, and photorealistic quality.";
-    const finalPrompt = `
-        **Primary Goal:** Edit the provided image(s) based on the user's request. If multiple images are provided, treat the first as the primary subject and the others as context or elements to incorporate.
+    const parts: Part[] = base64Images.map((img, index) => {
+        if (index === 1 && hasMaskedReference) {
+            return getBase64Part(img, 'image/jpeg');
+        }
+        return getBase64Part(img);
+    });
 
-        **UNBREAKABLE CORE RULE #1: PRESERVE FACE AND IDENTITY.** The face and identity of any person in the primary image MUST be preserved with 100% accuracy. Do not alter their facial features, structure, or skin tone in any way. This is a non-negotiable directive.
+    if (maskBase64) {
+        parts.push({
+            inlineData: {
+                data: maskBase64,
+                mimeType: 'image/png'
+            }
+        });
+    }
 
-        **User's Edit Request:** ${prompt}
+    let finalPrompt = prompt;
+    if (preserveFaceDetails) {
+        finalPrompt += " CRITICAL INSTRUCTION: Preserve the facial details and identity of the person in the first image with 100% accuracy.";
+    }
+    if (shotStyle !== 'Original') {
+        finalPrompt += ` The shot style should be '${shotStyle}'.`;
+    }
+    if (lightStyle !== 'Original') {
+        finalPrompt += ` The lighting should be '${lightStyle}'.`;
+    }
+    if (aspectRatio !== 'Original') {
+        finalPrompt += ` The aspect ratio of the final image must be ${aspectRatio}.`;
+    }
+    if (hasMaskedReference) {
+        finalPrompt += " Place the content of the second image into the masked area of the first image."
+    }
 
-        **Stylistic Direction:**
-        - **Shot Style:** The final image should have a '${shotStyle}' composition.
-        - **Lighting Style:** The lighting should be '${lightStyle}'.
-        - **Aspect Ratio:** The final image aspect ratio MUST be ${aspectRatio}. Adhere to this strictly if it's not 'Original'.
-
-        Apply the user's edit request while adhering to all stylistic directions and the unbreakable core rule.${enhancedPromptText}
-    `;
+    parts.push({ text: finalPrompt });
     
     const response = await ai.models.generateContent({
-        model: 'gemini-2.5-flash-image-preview',
-        contents: { parts: [...imageParts, { text: finalPrompt }] },
+        model: 'gemini-2.5-flash-image',
+        contents: { parts },
         config: {
             responseModalities: [Modality.IMAGE, Modality.TEXT],
+            seed: 42,
         },
     });
 
     return getImageFromResponse(response);
 };
 
+export const generateImageFromText = async (
+    prompt: string,
+    aspectRatio: string,
+    shotStyle: string,
+    lightStyle: string,
+    imageStyle?: string
+): Promise<string> => {
+    
+    let finalPrompt = prompt;
+    if (shotStyle !== 'Original') {
+        finalPrompt += `, ${shotStyle}`;
+    }
+    if (lightStyle !== 'Original') {
+        finalPrompt += `, ${lightStyle} lighting`;
+    }
+    if (imageStyle) {
+        finalPrompt += `, in a ${imageStyle} style`;
+    }
+
+    const ratioValue = aspectRatio.split(' ')[0];
+    const validRatios = ["1:1", "3:4", "4:3", "9:16", "16:9"];
+    let finalAspectRatio = '1:1'; // Default value
+    if (validRatios.includes(ratioValue)) {
+        finalAspectRatio = ratioValue;
+    }
+
+    const response = await ai.models.generateImages({
+        model: 'imagen-4.0-generate-001',
+        prompt: finalPrompt,
+        config: {
+            numberOfImages: 1,
+            outputMimeType: 'image/jpeg',
+            aspectRatio: finalAspectRatio,
+            seed: 42,
+        },
+    });
+
+    return response.generatedImages[0].image.imageBytes;
+};
+
 export const changeHairStyle = async (
     base64FaceData: string,
     hairStylePrompt: string,
-    gender: 'wanita' | 'pria'
+    gender: 'wanita' | 'pria',
+    hairReferenceBase64: string | null
 ): Promise<string> => {
-    const faceImagePart = getBase64Part(base64FaceData);
+    const parts: Part[] = [getBase64Part(base64FaceData)];
+    if (hairReferenceBase64) {
+        parts.push(getBase64Part(hairReferenceBase64));
+    }
 
-    const enhancedPromptText = 'contrasting beautifully with the bright subject. Maintain exact details of both faces and hair from the uploaded reference photos, preserving realistic skin texture, natural expressions, and photorealistic quality';
-
-    const finalPrompt = `
-        **Primary Goal:** Generate a new, photorealistic, full-body image of a model, focusing exclusively on changing the hairstyle while preserving all other features.
-
-        **UNBREAKABLE CORE RULE #1: PERFECT FACE IDENTITY PRESERVATION.** This is the most critical instruction. The face of the generated model MUST be a 100% PERFECT and EXACT replica of the face provided in the input image. You must NOT alter the facial structure, skin tone, eye shape, nose, lips, or any unique identifying features. The face in the final image must be indistinguishable from the face in the source photo. A similarity of at least 98% is required.
-
-        **UNBREAKABLE CORE RULE #2: PRESERVE BODY AND ATTIRE.** The model's body shape, clothing, and pose from the original photo MUST be preserved exactly. Do NOT change the outfit or the way the person is standing or sitting.
-
-        **HAIR INSTRUCTION (The ONLY change allowed):**
-        - The model is a ${gender === 'wanita' ? 'female' : 'male'}.
-        - Replace the current hairstyle with the following: "${hairStylePrompt}".
-        - The new hair should look natural and fit the person's head and face shape perfectly.
-
-        **Background:** The model should be against a plain, neutral light gray studio background. ${enhancedPromptText}
-
-        **Final Output:** A full-body shot showing the original person with only their hairstyle changed as per the instruction.
-    `;
-
-    const parts: Part[] = [faceImagePart, { text: finalPrompt }];
+    const prompt = `Change the hairstyle of the person in the first image. The subject is a ${gender === 'wanita' ? 'female' : 'male'}. New hairstyle description: ${hairStylePrompt}. IMPORTANT: Do NOT change the person's face, expression, clothing, or the background. Only change the hair. The facial identity must be preserved with 100% accuracy.`;
+    parts.push({ text: prompt });
 
     const response = await ai.models.generateContent({
-        model: 'gemini-2.5-flash-image-preview',
+        model: 'gemini-2.5-flash-image',
         contents: { parts },
         config: {
             responseModalities: [Modality.IMAGE, Modality.TEXT],
+            seed: 42,
         },
     });
 
     return getImageFromResponse(response);
+};
+
+export const analyzeHairStyle = async (base64HairData: string): Promise<string> => {
+    const imagePart = getBase64Part(base64HairData);
+    const promptPart = { text: "Provide a detailed description of the hairstyle in this image. Describe the color, length, texture (e.g., straight, wavy, curly), and style (e.g., bob, ponytail, layers). The description should be suitable for an AI image generator." };
+
+    const response = await ai.models.generateContent({
+        model: 'gemini-2.5-flash',
+        contents: { parts: [imagePart, promptPart] },
+        config: {
+            seed: 42,
+        },
+    });
+
+    return response.text.trim();
+};
+
+export const touchUpFace = async (base64FaceData: string, touchUpPrompt: string): Promise<string> => {
+    const imagePart = getBase64Part(base64FaceData);
+    const prompt = `Apply a facial touch-up to the person in the image based on these instructions: ${touchUpPrompt}. IMPORTANT: Only modify the skin and apply makeup as described. Do not change the person's facial structure, hair, clothing, or the background. The core identity must be preserved perfectly.`;
+    const promptPart = { text: prompt };
+
+    const response = await ai.models.generateContent({
+        model: 'gemini-2.5-flash-image',
+        contents: { parts: [imagePart, promptPart] },
+        config: {
+            responseModalities: [Modality.IMAGE, Modality.TEXT],
+            seed: 42,
+        },
+    });
+
+    return getImageFromResponse(response);
+};
+
+export interface VideoPromptResult {
+  prompt: string;
+  explanation: string;
+}
+
+export const generateVideoPrompts = async (userPrompt: string): Promise<{ meta: VideoPromptResult; veo: VideoPromptResult; sora: VideoPromptResult; }> => {
+  const systemInstruction = `You are a world-class prompt engineer specializing in text-to-video AI models. Your task is to take a user's simple idea and expand it into three distinct, highly detailed, and effective prompts, one for each of the following platforms: Meta AI's video generator, Google Veo, and OpenAI's Sora (via ChatGPT).
+
+For each platform, you must:
+1.  Create a 'prompt' that is long, descriptive, and tailored to the known strengths and syntax of that specific model. Include details about shot type, camera movement, lighting, composition, subject actions, atmosphere, and desired style.
+2.  Provide a concise 'explanation' of why the prompt is structured that way for that specific model, highlighting the key phrases or concepts that work well on that platform.
+
+Return the result as a JSON object.`;
+
+  const responseSchema = {
+    type: Type.OBJECT,
+    properties: {
+      meta: {
+        type: Type.OBJECT,
+        properties: {
+          prompt: { type: Type.STRING, description: "The detailed prompt for Meta AI's video generator." },
+          explanation: { type: Type.STRING, description: "Explanation of the Meta AI prompt." },
+        },
+        required: ['prompt', 'explanation'],
+      },
+      veo: {
+        type: Type.OBJECT,
+        properties: {
+          prompt: { type: Type.STRING, description: "The detailed prompt for Google Veo." },
+          explanation: { type: Type.STRING, description: "Explanation of the Google Veo prompt." },
+        },
+         required: ['prompt', 'explanation'],
+      },
+      sora: {
+        type: Type.OBJECT,
+        properties: {
+          prompt: { type: Type.STRING, description: "The detailed prompt for OpenAI's Sora." },
+          explanation: { type: Type.STRING, description: "Explanation of the Sora prompt." },
+        },
+        required: ['prompt', 'explanation'],
+      },
+    },
+    required: ['meta', 'veo', 'sora'],
+  };
+
+  const response = await ai.models.generateContent({
+    model: 'gemini-2.5-flash',
+    contents: `Expand this video idea: "${userPrompt}"`,
+    config: {
+      systemInstruction: systemInstruction,
+      responseMimeType: 'application/json',
+      responseSchema,
+      seed: 42,
+    },
+  });
+
+  const jsonText = response.text.trim();
+  return JSON.parse(jsonText);
+};
+
+export const analyzeImageForPrompt = async (base64ImageData: string): Promise<string> => {
+    const imagePart = getBase64Part(base64ImageData);
+    const promptPart = { 
+        text: "You are an expert prompt analyzer. Look at this image and generate a concise but detailed prompt that could be used to recreate it with an AI image generator. Focus on the subject, style, lighting, and composition. The prompt should not be overly long but must be effective." 
+    };
+
+    const response = await ai.models.generateContent({
+        model: 'gemini-2.5-flash',
+        contents: { parts: [imagePart, promptPart] },
+        config: {
+            seed: 42,
+        },
+    });
+
+    return response.text.trim();
+};
+
+export interface PromptModifications {
+    gender?: 'pria' | 'wanita';
+    objectCount?: string;
+    shirt?: string;
+    pants?: string;
+    shoes?: string;
+    accessories?: string;
+    lockFace?: boolean;
+    hairDescription?: string;
+    isHijab?: boolean;
+}
+
+export const refinePromptWithModifications = async (
+    originalPrompt: string,
+    modifications: PromptModifications
+): Promise<string> => {
+    let modificationInstructions = "Apply the following changes:\n";
+    if (modifications.gender) {
+        modificationInstructions += `- Change the main subject's gender to ${modifications.gender === 'pria' ? 'male' : 'female'}.\n`;
+    }
+    if (modifications.objectCount) {
+        modificationInstructions += `- Ensure the scene contains: ${modifications.objectCount}.\n`;
+    }
+    if (modifications.shirt) {
+        modificationInstructions += `- The subject should wear: ${modifications.shirt}.\n`;
+    }
+    if (modifications.pants) {
+        modificationInstructions += `- The subject's pants should be: ${modifications.pants}.\n`;
+    }
+    if (modifications.shoes) {
+        modificationInstructions += `- The subject's shoes should be: ${modifications.shoes}.\n`;
+    }
+    if (modifications.accessories) {
+        modificationInstructions += `- Include these accessories: ${modifications.accessories}.\n`;
+    }
+    if (modifications.isHijab) {
+        modificationInstructions += `- The subject MUST be wearing a simple, plain hijab. Any existing hair or headwear must be replaced by the hijab.\n`;
+    } else if (modifications.hairDescription) {
+        modificationInstructions += `- Change the subject's hair to: ${modifications.hairDescription}.\n`;
+    }
+    if (modifications.lockFace) {
+        modificationInstructions += `- CRITICAL: Jangan rubah detail wajah sedikitpun, Pertahankan kemiripan wajah dan ekspresi 100%.\n`;
+    }
+
+    const systemInstruction = `You are a prompt engineering expert. Your task is to intelligently integrate user-specified modifications into a base prompt. Rewrite the base prompt to naturally include all the changes. Do not just list the changes. Create a new, cohesive, and effective prompt. Respond with ONLY the final, updated prompt text.`;
+    
+    const userPrompt = `Base Prompt: "${originalPrompt}"\n\nModifications:\n${modificationInstructions}`;
+
+    const response = await ai.models.generateContent({
+        model: 'gemini-2.5-flash',
+        contents: userPrompt,
+        config: {
+            systemInstruction: systemInstruction,
+            seed: 42,
+        }
+    });
+
+    return response.text.trim();
 };

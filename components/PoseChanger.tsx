@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import { changePose, changeBackground, translateText, analyzePose, improvePrompt } from '../services/geminiService';
 import { shotStyles, lightStyles, aspectRatios } from '../constants/backgroundTemplates';
 import FileUpload from './FileUpload';
@@ -17,7 +17,8 @@ const PoseChanger: React.FC = () => {
     const [models, setModels] = useState<ModelInput[]>(() => Array(6).fill({ file: null, preview: null, gender: 'female' }));
     const [poseImage, setPoseImage] = useState<{ file: File; preview: string } | null>(null);
 
-    const [generatedImage, setGeneratedImage] = useState<string | null>(null);
+    const [currentImage, setCurrentImage] = useState<string | null>(null);
+    const [history, setHistory] = useState<string[]>([]);
     const [isLoading, setIsLoading] = useState<boolean>(false);
     const [error, setError] = useState<string | null>(null);
 
@@ -32,20 +33,33 @@ const PoseChanger: React.FC = () => {
 
     const [backgroundPrompt, setBackgroundPrompt] = useState<string>('A hyperrealistic sun-drenched beach with turquoise water and white sand.');
     const [selectedShotStyleBG, setSelectedShotStyleBG] = useState<string>(shotStyles[0]);
-    const [selectedLightStyleBG, setSelectedLightStyleBG] = useState<string>(lightStyles[0]);
+    const [selectedLightStyleBG, setSelectedLightStyleBG] = useState<string>(lightStyles[0].name);
+    const [changeDresscode, setChangeDresscode] = useState<boolean>(false);
     const [isChangingBackground, setIsChangingBackground] = useState<boolean>(false);
     const [backgroundError, setBackgroundError] = useState<string | null>(null);
     const [isImprovingPrompt, setIsImprovingPrompt] = useState<boolean>(false);
     const [isTranslatingBackground, setIsTranslatingBackground] = useState<boolean>(false);
+    const [backgroundLightStyleDescription, setBackgroundLightStyleDescription] = useState<string>('');
 
     const [poseReferenceType, setPoseReferenceType] = useState<'realistic' | 'sketch'>('realistic');
     const [aspectRatio, setAspectRatio] = useState<string>(aspectRatios[0]);
     const [isAspectRatioLocked, setIsAspectRatioLocked] = useState<boolean>(true);
     const [useLightingStyle, setUseLightingStyle] = useState<boolean>(false);
-    const [selectedLightingStyle, setSelectedLightingStyle] = useState<string>(lightStyles[0]);
+    const [selectedLightingStyle, setSelectedLightingStyle] = useState<string>(lightStyles[0].name);
+    const [poseLightingStyleDescription, setPoseLightingStyleDescription] = useState<string>('');
     const [useShotStyle, setUseShotStyle] = useState<boolean>(false);
     const [selectedShotStyle, setSelectedShotStyle] = useState<string>(shotStyles[0]);
     const [faceSimilarity, setFaceSimilarity] = useState<number>(95);
+
+    useEffect(() => {
+        const selectedStyle = lightStyles.find(style => style.name === selectedLightingStyle);
+        setPoseLightingStyleDescription(selectedStyle ? selectedStyle.description : '');
+    }, [selectedLightingStyle]);
+
+    useEffect(() => {
+        const selectedStyle = lightStyles.find(style => style.name === selectedLightStyleBG);
+        setBackgroundLightStyleDescription(selectedStyle ? selectedStyle.description : '');
+    }, [selectedLightStyleBG]);
 
 
     const handleModelUpload = (file: File, index: number) => {
@@ -56,7 +70,8 @@ const PoseChanger: React.FC = () => {
                 newModels[index] = { ...newModels[index], file, preview: reader.result as string };
                 return newModels;
             });
-            setGeneratedImage(null);
+            setCurrentImage(null);
+            setHistory([]);
             setError(null);
             setBackgroundError(null);
         };
@@ -77,7 +92,7 @@ const PoseChanger: React.FC = () => {
             setPoseImage({ file, preview: reader.result as string });
         };
         reader.readAsDataURL(file);
-        setGeneratedImage(null);
+        setCurrentImage(null);
         setError(null);
     };
 
@@ -177,7 +192,7 @@ const PoseChanger: React.FC = () => {
     const handlePoseModeChange = (mode: 'image' | 'text') => {
         setPoseMode(mode);
         setError(null);
-        setGeneratedImage(null);
+        setCurrentImage(null);
         setIsPoseFromAnalysis(false);
         if (mode === 'image') {
             setObjects([]);
@@ -199,8 +214,13 @@ const PoseChanger: React.FC = () => {
 
         try {
             const base64Image = poseImage.preview.split(',')[1];
-            const result = await analyzePose(base64Image);
-            setPosePrompt(result);
+            let analysisResult = await analyzePose(base64Image);
+
+            const enhancementPrompt = " *pastikan tidak merubah detail wajah ataupun rambut sedikitpun,pertahankan 100% kemiripannya dari referensi photo yang diunggah/dilampirkan. buat sangat realistis dengan detail tajam.kontras tinggi. seolah-olah diambil menggunakan kamera DSLR lensa terbaik.";
+            
+            const finalPrompt = analysisResult + enhancementPrompt;
+
+            setPosePrompt(finalPrompt);
             setPoseMode('text');
             setObjects([]);
             setIsPoseFromAnalysis(true);
@@ -230,7 +250,7 @@ const PoseChanger: React.FC = () => {
 
         setIsLoading(true);
         setError(null);
-        setGeneratedImage(null);
+        setCurrentImage(null);
         setBackgroundError(null);
 
         try {
@@ -257,7 +277,7 @@ const PoseChanger: React.FC = () => {
                 const poseImageBase64 = await getBase64(poseImage.preview);
                 poseConfig = { mode: 'image' as 'image', poseImageBase64, poseReferenceType };
             } else {
-                const objectImagesBase64 = await Promise.all(objects.map(obj => getBase64(obj.file)));
+                const objectImagesBase64 = await Promise.all(objects.map(obj => getBase64(obj.file!)));
                 poseConfig = { mode: 'text' as 'text', posePrompt, objectImagesBase64 };
             }
 
@@ -273,7 +293,9 @@ const PoseChanger: React.FC = () => {
                 faceSimilarity
             );
             
-            setGeneratedImage(`data:image/jpeg;base64,${result}`);
+            const newImage = `data:image/jpeg;base64,${result}`;
+            setCurrentImage(newImage);
+            setHistory(prev => [newImage, ...prev].slice(0, 10));
 
         } catch (err) {
             setError(err instanceof Error ? err.message : 'An unknown error occurred during pose generation.');
@@ -283,7 +305,7 @@ const PoseChanger: React.FC = () => {
     }, [models, numberOfModels, poseImage, poseMode, posePrompt, objects, poseReferenceType, aspectRatio, isAspectRatioLocked, useLightingStyle, selectedLightingStyle, useShotStyle, selectedShotStyle, faceSimilarity]);
     
     const handleChangeBackground = useCallback(async () => {
-        if (!generatedImage) {
+        if (!currentImage) {
             setBackgroundError("There is no generated image to change the background of.");
             return;
         }
@@ -297,20 +319,29 @@ const PoseChanger: React.FC = () => {
         setError(null);
 
         try {
-            const base64Image = generatedImage.split(',')[1];
-            const result = await changeBackground(base64Image, backgroundPrompt, selectedShotStyleBG, selectedLightStyleBG);
-            setGeneratedImage(`data:image/jpeg;base64,${result}`);
+            const base64Image = currentImage.split(',')[1];
+            const result = await changeBackground(
+                [base64Image], 
+                backgroundPrompt, 
+                selectedShotStyleBG, 
+                selectedLightStyleBG, 
+                aspectRatio, 
+                isAspectRatioLocked
+            );
+            const newImage = `data:image/jpeg;base64,${result}`;
+            setCurrentImage(newImage);
+            setHistory(prev => [newImage, ...prev].slice(0, 10));
         } catch (err) {
             setBackgroundError(err instanceof Error ? err.message : 'An unknown error occurred during background change.');
         } finally {
             setIsChangingBackground(false);
         }
 
-    }, [generatedImage, backgroundPrompt, selectedShotStyleBG, selectedLightStyleBG]);
+    }, [currentImage, backgroundPrompt, selectedShotStyleBG, selectedLightStyleBG, changeDresscode, aspectRatio, isAspectRatioLocked]);
 
     const activeModels = models.slice(0, numberOfModels);
     const canGenerate = !isLoading && activeModels.every(m => m.file) && (poseMode === 'text' ? !!posePrompt.trim() : !!poseImage);
-    const canChangeBackground = !!generatedImage && !isLoading && !isChangingBackground;
+    const canChangeBackground = !!currentImage && !isLoading && !isChangingBackground;
 
     return (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
@@ -551,14 +582,17 @@ const PoseChanger: React.FC = () => {
                             </div>
                         </div>
                         {useLightingStyle && (
-                            <select
-                                id="light-style"
-                                value={selectedLightingStyle}
-                                onChange={(e) => setSelectedLightingStyle(e.target.value)}
-                                className="w-full px-3 py-2 mt-2 text-gray-200 bg-gray-700 border border-gray-600 rounded-md focus:ring-cyan-500 focus:border-cyan-500"
-                            >
-                                {lightStyles.map(style => <option key={style} value={style}>{style}</option>)}
-                            </select>
+                            <div className="mt-2">
+                                <select
+                                    id="light-style"
+                                    value={selectedLightingStyle}
+                                    onChange={(e) => setSelectedLightingStyle(e.target.value)}
+                                    className="w-full px-3 py-2 text-gray-200 bg-gray-700 border border-gray-600 rounded-md focus:ring-cyan-500 focus:border-cyan-500"
+                                >
+                                    {lightStyles.map(style => <option key={style.name} value={style.name}>{style.name}</option>)}
+                                </select>
+                                {poseLightingStyleDescription && <p className="text-xs text-gray-400 mt-2">{poseLightingStyleDescription}</p>}
+                            </div>
                         )}
                     </div>
                 </div>
@@ -600,7 +634,7 @@ const PoseChanger: React.FC = () => {
                     </div>
                     <div className="flex flex-col">
                          <ImageDisplay
-                            imageUrl={generatedImage}
+                            imageUrl={currentImage}
                             isLoading={isLoading || isChangingBackground}
                             onRegenerate={handleGenerate}
                             isStandalone={true}
@@ -611,7 +645,7 @@ const PoseChanger: React.FC = () => {
                 </div>
 
                  {/* --- New Background Change Section --- */}
-                {generatedImage && !isLoading && (
+                {currentImage && !isLoading && (
                     <div className="mt-6 pt-6 border-t border-gray-700 space-y-4">
                         <h3 className="text-xl font-semibold text-cyan-400">Change Background</h3>
                         <div>
@@ -667,8 +701,29 @@ const PoseChanger: React.FC = () => {
                                     disabled={!canChangeBackground}
                                     className="w-full px-3 py-2 text-gray-200 bg-gray-700 border border-gray-600 rounded-md focus:ring-cyan-500 focus:border-cyan-500 disabled:cursor-not-allowed"
                                 >
-                                    {lightStyles.map(style => <option key={style} value={style}>{style}</option>)}
+                                    {lightStyles.map(style => <option key={style.name} value={style.name}>{style.name}</option>)}
                                 </select>
+                                {backgroundLightStyleDescription && <p className="text-xs text-gray-400 mt-2">{backgroundLightStyleDescription}</p>}
+                            </div>
+                        </div>
+                        <div className="relative flex items-start pt-2">
+                            <div className="flex h-6 items-center">
+                                <input
+                                    id="change-dresscode-pose"
+                                    name="change-dresscode"
+                                    type="checkbox"
+                                    checked={changeDresscode}
+                                    onChange={(e) => setChangeDresscode(e.target.checked)}
+                                    className="h-4 w-4 rounded border-gray-600 bg-gray-800 text-cyan-600 focus:ring-cyan-500"
+                                />
+                            </div>
+                            <div className="ml-3 text-sm leading-6">
+                                <label htmlFor="change-dresscode-pose" className="font-medium text-gray-300">
+                                    Ganti Baju & Perbaiki Pose
+                                </label>
+                                <p id="change-dresscode-description-pose" className="text-gray-500">
+                                    Izinkan AI untuk mengganti pakaian, memperbaiki pose, dan ekspresi agar sesuai dengan latar baru. Wajah akan tetap sama.
+                                </p>
                             </div>
                         </div>
                         <button
@@ -679,6 +734,29 @@ const PoseChanger: React.FC = () => {
                             {isChangingBackground ? <Spinner /> : <GenerateIcon className="w-5 h-5" />}
                             {isChangingBackground ? 'Changing Background...' : 'Change Background'}
                         </button>
+                    </div>
+                )}
+
+                {history.length > 0 && (
+                    <div className="mt-auto pt-4 border-t border-gray-700">
+                        <h4 className="text-lg font-semibold text-cyan-400 mb-3">Generation History</h4>
+                        <div className="flex gap-3 overflow-x-auto pb-2 -mb-2">
+                            {history.map((histImg, index) => (
+                                <div 
+                                    key={index}
+                                    className="flex-shrink-0 cursor-pointer"
+                                    onClick={() => setCurrentImage(histImg)}
+                                    role="button"
+                                    aria-label={`View history item ${index + 1}`}
+                                >
+                                    <img 
+                                        src={histImg} 
+                                        alt={`History ${index + 1}`}
+                                        className={`w-24 h-24 object-cover rounded-md border-2 transition-all ${currentImage === histImg ? 'border-cyan-400 scale-105' : 'border-transparent hover:border-gray-500'}`}
+                                    />
+                                </div>
+                            ))}
+                        </div>
                     </div>
                 )}
             </div>

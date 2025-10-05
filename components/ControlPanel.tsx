@@ -27,6 +27,7 @@ interface ControlPanelProps {
   height: number;
   setHeight: (value: number) => void;
   isChildDetected?: boolean;
+  isCloseUp?: boolean;
 }
 
 const SelectableButton: React.FC<{
@@ -78,6 +79,7 @@ const ControlPanel: React.FC<ControlPanelProps> = ({
   height,
   setHeight,
   isChildDetected = false,
+  isCloseUp = false,
 }) => {
   const isCustomizing = imageUploaded;
 
@@ -185,7 +187,7 @@ const ControlPanel: React.FC<ControlPanelProps> = ({
         </div>
 
         {/* Height Settings Section */}
-        <div className="p-4 bg-gray-900/50 rounded-lg space-y-4">
+        <div className={`p-4 bg-gray-900/50 rounded-lg space-y-4 ${isCloseUp ? 'opacity-50' : ''}`}>
           <h3 className="text-lg font-semibold text-gray-200">Height Settings</h3>
           <div>
             <label htmlFor="height" className="block text-sm font-medium text-gray-300 mb-2">
@@ -198,10 +200,11 @@ const ControlPanel: React.FC<ControlPanelProps> = ({
               max="210"
               value={height}
               onChange={(e) => setHeight(Number(e.target.value))}
-              disabled={!isCustomizing}
+              disabled={!isCustomizing || isCloseUp}
               className="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-cyan-500 disabled:cursor-not-allowed"
             />
             <p className="text-xs text-gray-400 mt-2">Set model height, from a 5-year-old child to a tall adult.</p>
+            {isCloseUp && <p className="text-xs text-yellow-400 mt-2">Height and detailed body measurements are disabled for Close-up mode.</p>}
           </div>
         </div>
 
@@ -223,7 +226,7 @@ const ControlPanel: React.FC<ControlPanelProps> = ({
                 </div>
             </div>
 
-            <div className={`pt-2 ${isChildDetected || (gender === 'female' && bodyShape === 'Special Body') ? 'opacity-50' : ''}`}>
+            <div className={`pt-2 ${isCloseUp || isChildDetected || (gender === 'female' && bodyShape === 'Special Body') ? 'opacity-50' : ''}`}>
                 <label className="block text-sm font-medium text-gray-300 mb-2">Ukuran Pinggang/Perut (Waist)</label>
                 <div className="grid grid-cols-3 gap-2">
                     {waistSizes.map(size => (
@@ -232,7 +235,7 @@ const ControlPanel: React.FC<ControlPanelProps> = ({
                             onClick={() => setWaistSize(size)}
                             label={size}
                             isActive={waistSize === size}
-                            disabled={!isCustomizing || isChildDetected || (gender === 'female' && bodyShape === 'Special Body')}
+                            disabled={!isCustomizing || isCloseUp || isChildDetected || (gender === 'female' && bodyShape === 'Special Body')}
                         />
                     ))}
                 </div>
@@ -240,7 +243,7 @@ const ControlPanel: React.FC<ControlPanelProps> = ({
 
             {gender === 'female' && (
                 <>
-                    <div className={`grid grid-cols-1 md:grid-cols-2 gap-4 pt-2 ${isChildDetected || bodyShape === 'Special Body' ? 'opacity-50' : ''}`}>
+                    <div className={`grid grid-cols-1 md:grid-cols-2 gap-4 pt-2 ${isCloseUp || isChildDetected || bodyShape === 'Special Body' ? 'opacity-50' : ''}`}>
                         <div>
                             <label className="block text-sm font-medium text-gray-300 mb-2">Bust Size</label>
                             <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
@@ -250,7 +253,7 @@ const ControlPanel: React.FC<ControlPanelProps> = ({
                                         onClick={() => setBustSize(size)}
                                         label={size}
                                         isActive={bustSize === size}
-                                        disabled={!isCustomizing || isChildDetected || bodyShape === 'Special Body'}
+                                        disabled={!isCustomizing || isCloseUp || isChildDetected || bodyShape === 'Special Body'}
                                     />
                                 ))}
                             </div>
@@ -264,15 +267,17 @@ const ControlPanel: React.FC<ControlPanelProps> = ({
                                         onClick={() => setButtocksSize(size)}
                                         label={size}
                                         isActive={buttocksSize === size}
-                                        disabled={!isCustomizing || isChildDetected || bodyShape === 'Special Body'}
+                                        disabled={!isCustomizing || isCloseUp || isChildDetected || bodyShape === 'Special Body'}
                                     />
                                 ))}
                             </div>
                         </div>
                     </div>
-                    {(isChildDetected || bodyShape === 'Special Body') && (
+                    {(isChildDetected || bodyShape === 'Special Body' || isCloseUp) && (
                         <p className="text-xs text-yellow-400 -mt-2">
-                            {bodyShape === 'Special Body' 
+                            { isCloseUp
+                                ? "Waist, Bust and Buttocks are disabled for Close-up mode."
+                                : bodyShape === 'Special Body' 
                                 ? "Waist, Bust and Buttocks are automatically set by the 'Special Body' type."
                                 : "Waist, Bust and Buttocks size controls are disabled for subjects detected as children."
                             }
@@ -281,9 +286,12 @@ const ControlPanel: React.FC<ControlPanelProps> = ({
                 </>
             )}
 
-            {gender === 'male' && isChildDetected && (
+            {gender === 'male' && (isChildDetected || isCloseUp) && (
                 <p className="text-xs text-yellow-400 pt-2">
-                    Waist size control is disabled for subjects detected as children.
+                    { isCloseUp 
+                      ? "Waist size is disabled for Close-up mode."
+                      : "Waist size control is disabled for subjects detected as children."
+                    }
                 </p>
             )}
         </div>

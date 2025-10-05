@@ -25,4 +25,5 @@ export interface ClothingAnalysis {
   top?: string;
   bottoms?: string;
   footwear?: string;
+  accessories?: string;
 }
